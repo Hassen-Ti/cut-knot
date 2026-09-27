@@ -1,5 +1,5 @@
 {
-  "name": "tala",
+  "name": "gass-garmat",
   "private": true,
   "version": "0.0.0",
   "type": "module",
@@ -24,5 +24,5 @@
     "vite": "^8.3.0"
   },
   "license": "Apache-2.0",
-  "description": "TALA \u2014 spatial data atelier (Source \u2192 Board): Excel~10% + Miro~10% + AI copilote (prototype)."
+  "description": "Gass Garmat \u2014 10% Excel + 10% board. Cut. Knot. Done. Spatial data atelier (Source \u2192 Board)."
 }

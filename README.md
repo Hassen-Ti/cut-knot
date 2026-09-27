@@ -1,6 +1,8 @@
-# TALA
+# Gass Garmat
 
-Spatial data atelier prototype: **Source → Board** (sources, Golden, KPI cards), plus full-screen **Forge** grid.
+**Cut. Knot. Done.** — 10% Excel + 10% board.
+
+Spatial data atelier: **Source → Board** (sources, Golden, KPI cards), plus full-screen **Forge** grid.
 
 - React 19 + TypeScript + Vite 8
 - Front-only for now (mock data; no backend)
