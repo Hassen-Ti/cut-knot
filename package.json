@@ -1,5 +1,5 @@
 {
-  "name": "gass-garmat",
+  "name": "cut-knot",
   "private": true,
   "version": "0.0.0",
   "type": "module",
@@ -24,5 +24,5 @@
     "vite": "^8.3.0"
   },
   "license": "Apache-2.0",
-  "description": "Gass Garmat \u2014 10% Excel + 10% board. Cut. Knot. Done. Spatial data atelier (Source \u2192 Board)."
+  "description": "Cut Knot \u2014 Cut. Knot. Done. 10% Excel + 10% board. Spatial data atelier (Source \u2192 Board)."
 }

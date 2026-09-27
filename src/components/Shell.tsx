@@ -18,7 +18,7 @@ export type ToolsVariant = 'board' | 'forge'
 export function AppHeader() {
   return (
     <header className="header">
-      <Link to="/source" className="brand">Gass Garmat</Link>
+      <Link to="/source" className="brand">Cut Knot</Link>
       <nav>
         <NavLink to="/source">Source</NavLink>
         <NavLink to="/forge">Forge</NavLink>

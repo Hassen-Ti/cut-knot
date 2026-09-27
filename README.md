@@ -1,4 +1,4 @@
-# Gass Garmat
+# Cut Knot
 
 **Cut. Knot. Done.** — 10% Excel + 10% board.
 
@@ -9,7 +9,7 @@ Spatial data atelier: **Source → Board** (sources, Golden, KPI cards), plus fu
 
 ## License
 
-Copyright 2026 Hassene Mehieddine Tilioua  
+Copyright 2026 Hassen-Ti  
 Licensed under the [Apache License, Version 2.0](LICENSE).
 
 ## Run
