@@ -26,3 +26,4 @@ dist-ssr
 # Local sync / archives
 tala-app-src.tar.gz
 *.tar.gz
+gass-garmat.bundle
