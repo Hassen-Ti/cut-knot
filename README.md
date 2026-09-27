@@ -2,15 +2,11 @@
 
 > **Status:** early prototype — unfinished. The shell works; real import, living joins, provenance, and acting AI are still ahead.
 
+Day to day, people live in Excel, Word, and Miro — not in ten more apps.
+
 **Cut. Knot. Done.** — 10% Excel + 10% board.
 
-## What this is
-
-A **draft** for a hard question under time pressure: messy files in, a story you can defend out.
-
-You drop sources onto a **Board**, shape a **Golden** table, pin **KPI** cards, and open **Forge** when you need a real grid. The idea is not another full spreadsheet or whiteboard — it is the thin slice that gets you from raw intake to something knotted (clear, checkable, ready to argue).
-
-AI is meant for the grunt work (clean, join, propose). You keep judgment.
+Cut Knot is that thin slice: **Source → Board** (sources, Golden, KPI cards) plus full-screen **Forge**, so you can cut to what matters and knot it into a draft.
 
 ## What’s in this repo today
 
