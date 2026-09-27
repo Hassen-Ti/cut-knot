@@ -2,11 +2,11 @@
 
 > **Status:** early prototype — unfinished. The shell works; real import, living joins, provenance, and acting AI are still ahead.
 
-Day to day, people live in Excel, Word, and Miro — not in ten more apps.
+Most people only use about **10%** of apps like Excel or Miro — enough to calculate a few things, sketch a board, get the answer. What if an app had **only** that 10% of each?
 
-**Cut. Knot. Done.** — 10% Excel + 10% board.
+**Cut. Knot. Done.** — 10% Excel + 10% board → enough for 100% of the task.
 
-Cut Knot is that thin slice: **Source → Board** (sources, Golden, KPI cards) plus full-screen **Forge**, so you can cut to what matters and knot it into a draft.
+Cut Knot is that slice: **Source → Board** (sources, Golden, KPI cards) plus full-screen **Forge**.
 
 ## What’s in this repo today
 
