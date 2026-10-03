@@ -396,10 +396,7 @@ table.sheet.is-dragging td { cursor: cell; }
   min-height: 0;
   touch-action: none;
 }
-.board-canvas.tool-sticky,
-.board-canvas.tool-frame,
 .board-canvas.tool-arrow,
-.board-canvas.tool-table,
 .board-canvas.tool-source,
 .board-canvas.tool-golden,
 .board-canvas.tool-kpi { cursor: crosshair; }

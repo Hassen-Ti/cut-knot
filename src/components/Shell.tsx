@@ -2,8 +2,8 @@ import { Link, NavLink } from 'react-router-dom'
 import type { ReactNode } from 'react'
 import { Panel, Group, Separator } from 'react-resizable-panels'
 
-/** Miro / Board tools (default). */
-export const BOARD_TOOLS = ['Select', 'Sticky', 'Frame', 'Arrow', 'Table', 'Source', 'Golden', 'KPI'] as const
+/** Board tools for drag-and-drop data flow canvas. */
+export const BOARD_TOOLS = ['Select', 'Arrow', 'Source', 'Golden', 'KPI'] as const
 /** Data tools for Forge. */
 export const FORGE_TOOLS = ['Select', 'Filter', 'Sort', 'SUM', 'IF'] as const
 
