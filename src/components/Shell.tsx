@@ -125,8 +125,8 @@ export function Shell3({
 }) {
   return (
     <div className="shell">
-      <Group orientation="horizontal" className="main-panels" id="main-layout">
-        <Panel defaultSize={20} minSize={12} maxSize={35} id="tools-panel" className="tools-panel-wrapper">
+      <Group orientation="horizontal" className="main-panels">
+        <Panel defaultSize="200px" minSize="120px" maxSize="400px" className="tools-panel-wrapper">
           <Tools
             active={toolProps?.active}
             onSelect={toolProps?.onSelect}
@@ -136,11 +136,11 @@ export function Shell3({
           />
         </Panel>
         <Separator className="resize-handle" />
-        <Panel defaultSize={50} minSize={25} id="center-panel" className="center-panel-wrapper">
+        <Panel minSize="350px" className="center-panel-wrapper">
           {center}
         </Panel>
         <Separator className="resize-handle" />
-        <Panel defaultSize={30} minSize={22} maxSize={45} id="wid-panel" className="wid-panel-wrapper">
+        <Panel defaultSize="420px" minSize="300px" maxSize="700px" className="wid-panel-wrapper">
           {wid}
         </Panel>
       </Group>
