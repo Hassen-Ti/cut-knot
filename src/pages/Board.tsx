@@ -248,11 +248,11 @@ const initialConnectors: Connector[] = [
 ]
 
 const defaultTimeline = [
-  { t: '14:02', a: 'Start draft' },
-  { t: '14:05', a: 'Import data' },
-  { t: '14:08', a: 'Open Board' },
-  { t: '14:12', a: 'Data transformation' },
-  { t: '14:20', a: 'Exploration' },
+  { t: '14:02', a: 'Start draft', state: 'done' as const },
+  { t: '14:05', a: 'Import data', state: 'done' as const },
+  { t: '14:08', a: 'Open Board', state: 'done' as const },
+  { t: '14:12', a: 'Data transformation', state: 'current' as const },
+  { t: '14:18', a: 'Preliminary analysis', state: 'deleted' as const },
 ]
 
 let nextId = 20
@@ -350,7 +350,7 @@ export default function Board() {
   const pushLog = useCallback((a: string) => {
     const now = new Date()
     const t = `${String(now.getHours()).padStart(2, '0')}:${String(now.getMinutes()).padStart(2, '0')}`
-    setLog((prev) => [{ t, a }, ...prev].slice(0, 12))
+    setLog((prev) => [{ t, a, state: 'done' as const }, ...prev].slice(0, 12))
   }, [])
 
   useEffect(() => {
@@ -875,17 +875,17 @@ export default function Board() {
 
   const widItems =
     selectedIds.length > 1
-      ? [{ t: 'now', a: `Selected ${selectedIds.length} items` }, ...log.slice(0, 5)]
+      ? [{ t: 'now', a: `Selected ${selectedIds.length} items`, state: 'current' as const }, ...log.slice(0, 5)]
       : primaryItem
         ? [
-            { t: 'now', a: `Selected ${primaryItem.type}: “${primaryItem.text}”` },
-            { t: 'pos', a: `at (${Math.round(primaryItem.x)}, ${Math.round(primaryItem.y)})` },
+            { t: 'now', a: `Selected ${primaryItem.type}: “${primaryItem.text}”`, state: 'current' as const },
+            { t: 'pos', a: `at (${Math.round(primaryItem.x)}, ${Math.round(primaryItem.y)})`, state: 'current' as const },
             ...log.slice(0, 4),
           ]
         : primaryConn
-          ? [{ t: 'now', a: 'Selected connector' }, ...log.slice(0, 5)]
+          ? [{ t: 'now', a: 'Selected connector', state: 'current' as const }, ...log.slice(0, 5)]
           : connectorDraft
-            ? [{ t: 'now', a: 'Pick connector target…' }, ...log.slice(0, 5)]
+            ? [{ t: 'now', a: 'Pick connector target…', state: 'current' as const }, ...log.slice(0, 5)]
             : log
 
   const scopeLabel =

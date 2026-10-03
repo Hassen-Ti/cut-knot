@@ -72,7 +72,7 @@ export function Tools({
   )
 }
 
-type WidItem = { t: string; a: string }
+type WidItem = { t: string; a: string; state?: 'current' | 'done' | 'deleted' }
 
 export function WhatIveDone({ scope, day, items }: { scope: string; day: string; items: WidItem[] }) {
   return (
@@ -81,7 +81,14 @@ export function WhatIveDone({ scope, day, items }: { scope: string; day: string;
       <div className="wid-day">{day}</div>
       <ul className="wid-list">
         {items.map((x, i) => (
-          <li key={`${i}-${x.t}-${x.a}`}><span className="t">{x.t}</span><span className="a">{x.a}</span></li>
+          <li
+            key={`${i}-${x.t}-${x.a}`}
+            className={x.state ? `wid-${x.state}` : undefined}
+            style={x.state === 'deleted' ? { pointerEvents: 'none' } : undefined}
+          >
+            <span className="t">{x.t}</span>
+            <span className="a">{x.a}</span>
+          </li>
         ))}
       </ul>
     </aside>
@@ -129,11 +136,11 @@ export function Shell3({
           />
         </Panel>
         <Separator className="resize-handle" />
-        <Panel defaultSize={50} minSize={30} id="center-panel" className="center-panel-wrapper">
+        <Panel defaultSize={50} minSize={25} id="center-panel" className="center-panel-wrapper">
           {center}
         </Panel>
         <Separator className="resize-handle" />
-        <Panel defaultSize={30} minSize={20} maxSize={45} id="wid-panel" className="wid-panel-wrapper">
+        <Panel defaultSize={30} minSize={22} maxSize={45} id="wid-panel" className="wid-panel-wrapper">
           {wid}
         </Panel>
       </Group>
