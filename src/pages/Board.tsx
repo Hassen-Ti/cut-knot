@@ -10,7 +10,7 @@ import {
 import { Link } from 'react-router-dom'
 import { Footer, Shell3, WhatIveDone, type ToolName } from '../components/Shell'
 
-type ItemType = 'sticky' | 'frame' | 'arrow' | 'source' | 'table' | 'golden' | 'kpi'
+type ItemType = 'arrow' | 'source' | 'golden' | 'kpi'
 
 type SourceView = 'chip' | 'apercu'
 
@@ -235,8 +235,6 @@ const initialItems: BoardItem[] = [
     spark: [5, 4, 6, 3, 4, 2, 5, 3, 4, 3],
     chartKind: 'spark',
   },
-  { id: 's1', type: 'sticky', x: 40, y: 320, w: 140, h: 90, text: 'Hypothèse coût zone' },
-  { id: 's2', type: 'sticky', x: 220, y: 340, w: 140, h: 90, text: 'Jointure OK — vérifier Est' },
 ]
 
 const initialConnectors: Connector[] = [
@@ -248,11 +246,11 @@ const initialConnectors: Connector[] = [
 ]
 
 const defaultTimeline = [
-  { t: '14:02', a: 'Start draft' },
-  { t: '14:05', a: 'Import data' },
-  { t: '14:08', a: 'Open Board' },
-  { t: '14:12', a: 'Data transformation' },
-  { t: '14:20', a: 'Exploration' },
+  { t: '14:02', a: 'Start draft', state: 'done' as const },
+  { t: '14:05', a: 'Import data', state: 'done' as const },
+  { t: '14:08', a: 'Open Board', state: 'done' as const },
+  { t: '14:12', a: 'Data transformation', state: 'current' as const },
+  { t: '14:18', a: 'Preliminary analysis', state: 'deleted' as const },
 ]
 
 let nextId = 20
@@ -299,10 +297,7 @@ function canvasPoint(el: HTMLDivElement, clientX: number, clientY: number, zoom:
 
 function isEditableType(type: ItemType) {
   return (
-    type === 'sticky' ||
-    type === 'frame' ||
     type === 'source' ||
-    type === 'table' ||
     type === 'golden' ||
     type === 'kpi'
   )
@@ -350,7 +345,7 @@ export default function Board() {
   const pushLog = useCallback((a: string) => {
     const now = new Date()
     const t = `${String(now.getHours()).padStart(2, '0')}:${String(now.getMinutes()).padStart(2, '0')}`
-    setLog((prev) => [{ t, a }, ...prev].slice(0, 12))
+    setLog((prev) => [{ t, a, state: 'done' as const }, ...prev].slice(0, 12))
   }, [])
 
   useEffect(() => {
@@ -724,33 +719,21 @@ export default function Board() {
     const p = canvasPoint(canvas, e.clientX, e.clientY, zoomRef.current)
 
     if (
-      tool === 'Sticky' ||
-      tool === 'Frame' ||
-      tool === 'Table' ||
       tool === 'Source' ||
       tool === 'Golden' ||
       tool === 'KPI'
     ) {
       const type: ItemType =
-        tool === 'Sticky'
-          ? 'sticky'
-          : tool === 'Frame'
-            ? 'frame'
-            : tool === 'Table'
-              ? 'table'
-              : tool === 'Source'
-                ? 'source'
-                : tool === 'Golden'
-                  ? 'golden'
-                  : 'kpi'
+        tool === 'Source'
+          ? 'source'
+          : tool === 'Golden'
+            ? 'golden'
+            : 'kpi'
       const id = `${type[0]}${nextId++}`
       const defaults: Record<
-        'sticky' | 'frame' | 'table' | 'source' | 'golden' | 'kpi',
+        'source' | 'golden' | 'kpi',
         Partial<BoardItem> & { w: number; h: number; text: string }
       > = {
-        sticky: { w: 140, h: 90, text: 'Nouvelle sticky' },
-        frame: { w: 220, h: 160, text: 'Nouveau frame' },
-        table: { w: 300, h: 168, text: 'Nouveau tableau', cells: EMPTY_TABLE_CELLS },
         source: {
           ...sourceDims('chip', 'fichier.csv'),
           text: 'fichier.csv',
@@ -837,37 +820,6 @@ export default function Board() {
     }
   }
 
-  const tidy = () => {
-    const itemSelected = selectedIds.filter((id) => items.some((it) => it.id === id))
-    const targets = itemSelected.length > 0 ? itemSelected : items.map((it) => it.id)
-    const targetSet = new Set(targets)
-
-    setItems((prev) => {
-      const next = prev.map((it) =>
-        targetSet.has(it.id)
-          ? { ...it, x: snap(it.x, false), y: snap(it.y, false) }
-          : { ...it },
-      )
-      const stickies = next.filter((it) => it.type === 'sticky' && targetSet.has(it.id))
-      for (let i = 0; i < stickies.length; i++) {
-        for (let j = i + 1; j < stickies.length; j++) {
-          const a = stickies[i]
-          const b = stickies[j]
-          if (!rectsIntersect(a, { ...b, w: b.w + 4, h: b.h + 4 })) continue
-          const overlapX = a.x + a.w + GRID - b.x
-          const overlapY = a.y + a.h + GRID - b.y
-          if (overlapX > 0 && overlapY > 0) {
-            if (overlapX <= overlapY) b.x = snap(a.x + a.w + GRID, false)
-            else b.y = snap(a.y + a.h + GRID, false)
-          }
-        }
-      }
-      const byId = new Map(stickies.map((s) => [s.id, s]))
-      return next.map((it) => byId.get(it.id) ?? it)
-    })
-    pushLog('Tidied board')
-  }
-
   const primaryItem =
     selectedIds.length === 1 ? items.find((i) => i.id === selectedIds[0]) : undefined
   const primaryConn =
@@ -875,17 +827,17 @@ export default function Board() {
 
   const widItems =
     selectedIds.length > 1
-      ? [{ t: 'now', a: `Selected ${selectedIds.length} items` }, ...log.slice(0, 5)]
+      ? [{ t: 'now', a: `Selected ${selectedIds.length} items`, state: 'current' as const }, ...log.slice(0, 5)]
       : primaryItem
         ? [
-            { t: 'now', a: `Selected ${primaryItem.type}: “${primaryItem.text}”` },
-            { t: 'pos', a: `at (${Math.round(primaryItem.x)}, ${Math.round(primaryItem.y)})` },
+            { t: 'now', a: `Selected ${primaryItem.type}: “${primaryItem.text}”`, state: 'current' as const },
+            { t: 'pos', a: `at (${Math.round(primaryItem.x)}, ${Math.round(primaryItem.y)})`, state: 'current' as const },
             ...log.slice(0, 4),
           ]
         : primaryConn
-          ? [{ t: 'now', a: 'Selected connector' }, ...log.slice(0, 5)]
+          ? [{ t: 'now', a: 'Selected connector', state: 'current' as const }, ...log.slice(0, 5)]
           : connectorDraft
-            ? [{ t: 'now', a: 'Pick connector target…' }, ...log.slice(0, 5)]
+            ? [{ t: 'now', a: 'Pick connector target…', state: 'current' as const }, ...log.slice(0, 5)]
             : log
 
   const scopeLabel =
@@ -902,7 +854,7 @@ export default function Board() {
 
   return (
     <Shell3
-      toolProps={{ active: tool, onSelect: (t) => setTool(t as ToolName), onTidy: tidy, variant: 'board' }}
+      toolProps={{ active: tool, onSelect: (t) => setTool(t as ToolName), variant: 'board' }}
       center={
         <section className="panel">
           <div className="panel-title">Board</div>
@@ -1000,32 +952,6 @@ export default function Board() {
                     onPointerDown={(ev) => onPointerDownItem(ev, item)}
                     onDoubleClick={(ev) => onDoubleClickItem(ev, item)}
                   >
-                    {item.type === 'frame' && (
-                      <div
-                        className={`board-frame-label${isEditing ? ' editing' : ''}`}
-                        contentEditable={isEditing}
-                        suppressContentEditableWarning
-                        ref={isEditing ? editRef : undefined}
-                        onBlur={isEditing ? commitEdit : undefined}
-                        onKeyDown={isEditing ? onEditKeyDown : undefined}
-                        onPointerDown={isEditing ? (ev) => ev.stopPropagation() : undefined}
-                      >
-                        {item.text}
-                      </div>
-                    )}
-                    {item.type === 'sticky' && (
-                      <div
-                        className={`board-sticky-text${isEditing ? ' editing' : ''}`}
-                        contentEditable={isEditing}
-                        suppressContentEditableWarning
-                        ref={isEditing ? editRef : undefined}
-                        onBlur={isEditing ? commitEdit : undefined}
-                        onKeyDown={isEditing ? onEditKeyDown : undefined}
-                        onPointerDown={isEditing ? (ev) => ev.stopPropagation() : undefined}
-                      >
-                        {item.text}
-                      </div>
-                    )}
                     {item.type === 'source' && !isApercu && (
                       <div className="board-source-chip">
                         <span className="board-source-ico" aria-hidden />
@@ -1058,7 +984,7 @@ export default function Board() {
                         </div>
                       </div>
                     )}
-                    {(isApercu || item.type === 'table') && (
+                    {isApercu && (
                       <div className="board-table-inner">
                         <div
                           className={`board-table-title${isEditing ? ' editing' : ''}`}

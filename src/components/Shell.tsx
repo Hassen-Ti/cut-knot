@@ -1,8 +1,9 @@
 import { Link, NavLink } from 'react-router-dom'
 import type { ReactNode } from 'react'
+import { Panel, Group, Separator } from 'react-resizable-panels'
 
-/** Miro / Board tools (default). */
-export const BOARD_TOOLS = ['Select', 'Sticky', 'Frame', 'Arrow', 'Table', 'Source', 'Golden', 'KPI'] as const
+/** Board tools for drag-and-drop data flow canvas. */
+export const BOARD_TOOLS = ['Select', 'Arrow', 'Source', 'Golden', 'KPI'] as const
 /** Data tools for Forge. */
 export const FORGE_TOOLS = ['Select', 'Filter', 'Sort', 'SUM', 'IF'] as const
 
@@ -71,7 +72,7 @@ export function Tools({
   )
 }
 
-type WidItem = { t: string; a: string }
+type WidItem = { t: string; a: string; state?: 'current' | 'done' | 'deleted' }
 
 export function WhatIveDone({ scope, day, items }: { scope: string; day: string; items: WidItem[] }) {
   return (
@@ -80,7 +81,14 @@ export function WhatIveDone({ scope, day, items }: { scope: string; day: string;
       <div className="wid-day">{day}</div>
       <ul className="wid-list">
         {items.map((x, i) => (
-          <li key={`${i}-${x.t}-${x.a}`}><span className="t">{x.t}</span><span className="a">{x.a}</span></li>
+          <li
+            key={`${i}-${x.t}-${x.a}`}
+            className={x.state ? `wid-${x.state}` : undefined}
+            style={x.state === 'deleted' ? { pointerEvents: 'none' } : undefined}
+          >
+            <span className="t">{x.t}</span>
+            <span className="a">{x.a}</span>
+          </li>
         ))}
       </ul>
     </aside>
@@ -117,17 +125,25 @@ export function Shell3({
 }) {
   return (
     <div className="shell">
-      <div className="main">
-        <Tools
-          active={toolProps?.active}
-          onSelect={toolProps?.onSelect}
-          onTidy={toolProps?.onTidy}
-          tools={toolProps?.tools}
-          variant={toolProps?.variant}
-        />
-        {center}
-        {wid}
-      </div>
+      <Group orientation="horizontal" className="main-panels">
+        <Panel defaultSize="200px" minSize="120px" maxSize="400px" className="tools-panel-wrapper">
+          <Tools
+            active={toolProps?.active}
+            onSelect={toolProps?.onSelect}
+            onTidy={toolProps?.onTidy}
+            tools={toolProps?.tools}
+            variant={toolProps?.variant}
+          />
+        </Panel>
+        <Separator className="resize-handle" />
+        <Panel minSize="350px" className="center-panel-wrapper">
+          {center}
+        </Panel>
+        <Separator className="resize-handle" />
+        <Panel defaultSize="420px" minSize="300px" maxSize="700px" className="wid-panel-wrapper">
+          {wid}
+        </Panel>
+      </Group>
       {footer}
     </div>
   )
