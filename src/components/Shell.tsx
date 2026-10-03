@@ -1,5 +1,6 @@
 import { Link, NavLink } from 'react-router-dom'
 import type { ReactNode } from 'react'
+import { Panel, Group, Separator } from 'react-resizable-panels'
 
 /** Miro / Board tools (default). */
 export const BOARD_TOOLS = ['Select', 'Sticky', 'Frame', 'Arrow', 'Table', 'Source', 'Golden', 'KPI'] as const
@@ -117,17 +118,25 @@ export function Shell3({
 }) {
   return (
     <div className="shell">
-      <div className="main">
-        <Tools
-          active={toolProps?.active}
-          onSelect={toolProps?.onSelect}
-          onTidy={toolProps?.onTidy}
-          tools={toolProps?.tools}
-          variant={toolProps?.variant}
-        />
-        {center}
-        {wid}
-      </div>
+      <Group orientation="horizontal" className="main-panels" id="main-layout">
+        <Panel defaultSize={20} minSize={12} maxSize={35} id="tools-panel" className="tools-panel-wrapper">
+          <Tools
+            active={toolProps?.active}
+            onSelect={toolProps?.onSelect}
+            onTidy={toolProps?.onTidy}
+            tools={toolProps?.tools}
+            variant={toolProps?.variant}
+          />
+        </Panel>
+        <Separator className="resize-handle" />
+        <Panel defaultSize={50} minSize={30} id="center-panel" className="center-panel-wrapper">
+          {center}
+        </Panel>
+        <Separator className="resize-handle" />
+        <Panel defaultSize={30} minSize={20} maxSize={45} id="wid-panel" className="wid-panel-wrapper">
+          {wid}
+        </Panel>
+      </Group>
       {footer}
     </div>
   )
