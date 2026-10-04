@@ -8,6 +8,10 @@ Most people only use about **10%** of apps like Excel or Miro — enough to calc
 
 Cut Knot is that slice: **Source → Board** (sources, Golden, KPI cards) plus full-screen **Forge**.
 
+## Interface
+
+![Cut Knot Board](docs/board.png)
+
 ## What’s in this repo today
 
 | Area | State |
