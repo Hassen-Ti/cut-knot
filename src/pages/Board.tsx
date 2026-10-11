@@ -190,9 +190,19 @@ const initialItems: BoardItem[] = [
     cells: COUTS_CELLS,
   },
   {
+    id: 'src3',
+    type: 'source',
+    x: 400,
+    y: 36,
+    ...sourceDims('chip', 'coûts v2.csv'),
+    text: 'coûts v2.csv',
+    view: 'chip',
+    cells: COUTS_CELLS,
+  },
+  {
     id: 'g1',
     type: 'golden',
-    x: 440,
+    x: 560,
     y: 80,
     ...goldenDims('chip', 'last-mile'),
     text: 'last-mile',
@@ -202,7 +212,7 @@ const initialItems: BoardItem[] = [
   {
     id: 'k1',
     type: 'kpi',
-    x: 720,
+    x: 860,
     y: 40,
     w: KPI_W,
     h: KPI_H,
@@ -214,7 +224,7 @@ const initialItems: BoardItem[] = [
   {
     id: 'k2',
     type: 'kpi',
-    x: 920,
+    x: 1060,
     y: 40,
     w: KPI_W,
     h: KPI_H,
@@ -226,7 +236,7 @@ const initialItems: BoardItem[] = [
   {
     id: 'k3',
     type: 'kpi',
-    x: 820,
+    x: 960,
     y: 200,
     w: KPI_W,
     h: KPI_H,
@@ -239,7 +249,7 @@ const initialItems: BoardItem[] = [
 
 const initialConnectors: Connector[] = [
   { id: 'c1', type: 'connector', fromId: 'src1', toId: 'g1' },
-  { id: 'c2', type: 'connector', fromId: 'src2', toId: 'g1' },
+  { id: 'c2', type: 'connector', fromId: 'src3', toId: 'g1' },
   { id: 'c3', type: 'connector', fromId: 'g1', toId: 'k1' },
   { id: 'c4', type: 'connector', fromId: 'g1', toId: 'k2' },
   { id: 'c5', type: 'connector', fromId: 'g1', toId: 'k3' },
