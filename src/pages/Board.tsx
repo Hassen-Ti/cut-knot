@@ -867,7 +867,28 @@ export default function Board() {
       toolProps={{ active: tool, onSelect: (t) => setTool(t as ToolName), variant: 'board' }}
       center={
         <section className="panel">
-          <div className="panel-title">Board</div>
+          <div className="board-titlebar">
+            <div className="panel-title">Board</div>
+            <div className="board-zoom-controls" onPointerDown={(e) => e.stopPropagation()}>
+              <button type="button" className="board-zoom-btn" aria-label="Zoom arrière" onClick={() => zoomBy(-ZOOM_STEP)}>
+                −
+              </button>
+              <button
+                type="button"
+                className="board-zoom-pct"
+                title="Double-clic : 100%"
+                onDoubleClick={zoomTo100}
+              >
+                {Math.round(zoom * 100)}%
+              </button>
+              <button type="button" className="board-zoom-btn" aria-label="Zoom avant" onClick={() => zoomBy(ZOOM_STEP)}>
+                +
+              </button>
+              <button type="button" className="board-zoom-btn board-zoom-fit" title="Ajuster" aria-label="Ajuster" onClick={zoomToFit}>
+                ⤢
+              </button>
+            </div>
+          </div>
           <div
             className={`board-canvas tool-${tool.toLowerCase()}${spaceDown ? ' panning' : ''}${connectorDraft ? ' connecting' : ''}`}
             ref={canvasRef}
@@ -1064,25 +1085,6 @@ export default function Board() {
                 />
               )}
             </div>
-            </div>
-            <div className="board-zoom-controls" onPointerDown={(e) => e.stopPropagation()}>
-              <button type="button" className="board-zoom-btn" aria-label="Zoom arrière" onClick={() => zoomBy(-ZOOM_STEP)}>
-                −
-              </button>
-              <button
-                type="button"
-                className="board-zoom-pct"
-                title="Double-clic : 100%"
-                onDoubleClick={zoomTo100}
-              >
-                {Math.round(zoom * 100)}%
-              </button>
-              <button type="button" className="board-zoom-btn" aria-label="Zoom avant" onClick={() => zoomBy(ZOOM_STEP)}>
-                +
-              </button>
-              <button type="button" className="board-zoom-btn board-zoom-fit" title="Ajuster" aria-label="Ajuster" onClick={zoomToFit}>
-                ⤢
-              </button>
             </div>
           </div>
         </section>
