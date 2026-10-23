@@ -1,4 +1,4 @@
-import { useEffect, useId, useState, type ReactNode, type SVGProps } from 'react'
+import { useEffect, useId, useRef, useState, type ReactNode, type SVGProps } from 'react'
 import { Link, NavLink } from 'react-router-dom'
 import { Panel, Group, Separator } from 'react-resizable-panels'
 
@@ -210,16 +210,24 @@ export type ToolProps = {
   variant?: ToolsVariant
 }
 
+/** Horizontal mins: tools 160 + center 350 + history 280 + two 8px separators. */
+const SIDE_BY_SIDE_MIN = 160 + 350 + 280 + 8 + 8
+
 function useNarrowShell() {
-  const query = '(max-width: 768px)'
-  const [narrow, setNarrow] = useState(() => window.matchMedia(query).matches)
+  const shellRef = useRef<HTMLDivElement>(null)
+  const [narrow, setNarrow] = useState(
+    () => document.documentElement.clientWidth < SIDE_BY_SIDE_MIN,
+  )
   useEffect(() => {
-    const media = window.matchMedia(query)
-    const onChange = () => setNarrow(media.matches)
-    media.addEventListener('change', onChange)
-    return () => media.removeEventListener('change', onChange)
+    const shell = shellRef.current
+    if (!shell) return
+    const update = () => setNarrow(shell.clientWidth < SIDE_BY_SIDE_MIN)
+    update()
+    const observer = new ResizeObserver(update)
+    observer.observe(shell)
+    return () => observer.disconnect()
   }, [])
-  return narrow
+  return { shellRef, narrow }
 }
 
 export function Shell3({
@@ -233,10 +241,14 @@ export function Shell3({
   footer: ReactNode
   toolProps?: ToolProps
 }) {
-  const narrow = useNarrowShell()
+  const { shellRef, narrow } = useNarrowShell()
   return (
-    <div className="shell">
-      <Group orientation={narrow ? 'vertical' : 'horizontal'} className="main-panels">
+    <div ref={shellRef} className={narrow ? 'shell shell-stack' : 'shell'}>
+      <Group
+        key={narrow ? 'stack' : 'wide'}
+        orientation={narrow ? 'vertical' : 'horizontal'}
+        className="main-panels"
+      >
         <Panel
           defaultSize={narrow ? '148px' : '200px'}
           minSize={narrow ? '120px' : '160px'}

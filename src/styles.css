@@ -133,11 +133,42 @@ a { color: inherit; text-decoration: none; }
   box-shadow: 0 0 8px rgba(24, 24, 27, 0.15);
 }
 
+.shell-stack .wid-panel-wrapper {
+  min-width: 0 !important;
+  flex-shrink: 1 !important;
+}
+.shell-stack .resize-handle {
+  width: 100%;
+  height: 8px;
+  cursor: row-resize;
+}
+.shell-stack .resize-handle::before {
+  left: 0;
+  right: 0;
+  top: 3px;
+  bottom: auto;
+  width: auto;
+  height: 2px;
+}
+.shell-stack .resize-handle:hover::before,
+.shell-stack .resize-handle[data-separator]:hover::before,
+.shell-stack .resize-handle[data-separator][data-drag]::before {
+  height: 3px;
+  width: auto;
+}
+.shell-stack .tools {
+  flex-direction: row;
+  flex-wrap: wrap;
+  align-items: center;
+  align-content: center;
+  padding: 8px;
+  overflow-x: auto;
+}
+.shell-stack .tool {
+  min-width: 60px;
+  flex: 0 0 auto;
+}
 @media (max-width: 768px) {
-  .wid-panel-wrapper {
-    min-width: 0 !important;
-    flex-shrink: 1 !important;
-  }
   .header {
     padding: 8px 12px;
   }
@@ -147,35 +178,6 @@ a { color: inherit; text-decoration: none; }
   .header nav a {
     font-size: 13px;
     padding: 8px 10px;
-  }
-  .resize-handle {
-    width: 100%;
-    height: 8px;
-    cursor: row-resize;
-  }
-  .resize-handle::before {
-    left: 0;
-    right: 0;
-    top: 3px;
-    bottom: auto;
-    width: auto;
-    height: 2px;
-  }
-  .resize-handle:hover::before,
-  .resize-handle[data-separator]:hover::before,
-  .resize-handle[data-separator][data-drag]::before {
-    height: 3px;
-    width: auto;
-  }
-  .tools {
-    flex-direction: row;
-    flex-wrap: wrap;
-    padding: 8px;
-    overflow-x: auto;
-  }
-  .tool {
-    min-width: 60px;
-    flex: 0 0 auto;
   }
   .footer {
     padding: 8px 10px;
