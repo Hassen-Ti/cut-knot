@@ -9,7 +9,10 @@ lerna-debug.log*
 
 node_modules
 dist
+dist-electron
 dist-ssr
+release
+.chromium-tmp
 *.local
 
 # Editor directories and files

@@ -21,7 +21,7 @@ Cut Knot is that slice: **Source → Board** (sources, Golden, KPI cards) plus f
 | **Forge** — filter, sort, formulas, selection | UI prototype |
 | Real CSV import, live Golden, provenance graph, acting AI chat | **Not built yet** |
 
-Stack: React 19 + TypeScript + Vite 8. Front-only for now (no backend).
+Stack: React 19 + TypeScript + Vite 8, wrapped in a small Electron shell for Windows. The UI is still the same front; CSV import into Source / Golden is not wired yet.
 
 ## License
 
@@ -35,9 +35,21 @@ npm install
 npm run dev
 ```
 
+`npm run dev` starts Vite and opens the Electron window together (renderer hot reload). For the browser-only Vite server: `npm run dev:web`.
+
 ## Build
+
+Web (browser):
 
 ```bash
 npm run build
 npm run preview
 ```
+
+Windows desktop (unsigned portable zip — no installer, no code signing, no auto-update). This target can be built from Linux or Windows without Wine:
+
+```bash
+npm run dist:win
+```
+
+The zip lands in `release/`.
