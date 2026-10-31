@@ -14,7 +14,11 @@ export type OpenFileOptions = {
 export type CutKnotBridge = {
   /** Native file picker. CSV is the default filter. Returns an absolute path or null. */
   openFile: (options?: OpenFileOptions) => Promise<string | null>
-  /** Read a file by absolute path (utf-8). Call on demand — nothing is preloaded. */
+  /**
+   * Read a file by absolute path as a latin1 binary string (one char per byte).
+   * The main process does not decode UTF-8; Source detects BOM / strict UTF-8
+   * and falls back to Windows-1252.
+   */
   readFile: (filePath: string) => Promise<string>
   /** Watch an absolute path; callback fires when the file changes on disk. Returns unwatch. */
   watchFile: (

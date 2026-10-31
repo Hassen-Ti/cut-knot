@@ -85,7 +85,9 @@ function registerBridge() {
 
   ipcMain.handle(IPC.readFile, async (_event, filePath: unknown) => {
     const absolute = assertAbsolutePath(filePath)
-    return fs.promises.readFile(absolute, 'utf8')
+    // latin1 keeps every byte so the renderer can detect UTF-8 vs Windows-1252.
+    const buf = await fs.promises.readFile(absolute)
+    return buf.toString('latin1')
   })
 
   ipcMain.handle(IPC.watchFile, async (event, watchId: unknown, filePath: unknown) => {
