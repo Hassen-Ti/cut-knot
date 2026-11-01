@@ -81,7 +81,8 @@ export async function pickCsvFile(): Promise<LoadedCsv | null> {
 
 export async function loadedCsvFromFile(file: File): Promise<LoadedCsv> {
   const buffer = await file.arrayBuffer()
-  return loadedCsvFromBytes(file.name, new Uint8Array(buffer))
+  const loaded = loadedCsvFromBytes(file.name, new Uint8Array(buffer))
+  return { ...loaded, filePath: undefined }
 }
 
 export function droppedCsvFiles(list: FileList | File[] | null | undefined): File[] {

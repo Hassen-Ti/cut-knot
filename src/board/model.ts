@@ -21,6 +21,8 @@ export type BoardItem = {
   stale?: boolean
   error?: string
   joinStatus?: JoinStatus
+  /** Visible What I've done line when the last join aggregated right-side duplicates. */
+  joinNote?: string
   kpiAgg?: KpiAgg
   kpiColumn?: string
   kpiNumerator?: string

@@ -58,6 +58,7 @@ const child = spawn(
       CUT_KNOT_FIXTURE_COUTS: path.join(fixtures, 'couts.csv'),
       CUT_KNOT_FIXTURE_COUTS_V2: path.join(fixtures, 'couts-v2.csv'),
       CUT_KNOT_FIXTURE_COUTS_1252: path.join(fixtures, 'couts-1252.csv'),
+      CUT_KNOT_FIXTURE_COUTS_DUPES: path.join(fixtures, 'couts-dupes.csv'),
       CUT_KNOT_SHOT_DIR: shotDir,
       CUT_KNOT_SCREENSHOT: boardShot,
       CUT_KNOT_SCREENSHOT_FORGE: forgeShot,

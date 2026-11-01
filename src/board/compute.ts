@@ -1,4 +1,4 @@
-import { leftJoin } from '../csv/join.ts'
+import { joinAggregateLog, leftJoin } from '../csv/join.ts'
 import { defaultKpiSpec, measureFromGolden, type KpiSpec } from '../csv/kpi.ts'
 import {
   goldenChipLabel,
@@ -38,7 +38,7 @@ export function applyCsvToSource(
     return {
       ...item,
       text,
-      filePath: payload.filePath ?? item.filePath,
+      filePath: payload.filePath,
       error: payload.error,
       stale: false,
       w: dims.w,
@@ -49,7 +49,7 @@ export function applyCsvToSource(
     ...item,
     text,
     cells: payload.cells,
-    filePath: payload.filePath ?? item.filePath,
+    filePath: payload.filePath,
     error: undefined,
     stale: false,
     w: dims.w,
@@ -87,6 +87,7 @@ export function recomputeBoard(items: BoardItem[], connectors: Connector[]): Boa
         ...item,
         cells: undefined,
         joinStatus: undefined,
+        joinNote: undefined,
         stale: Boolean(item.cells) || Boolean(item.stale),
         w: dims.w,
         h: dims.h,
@@ -101,6 +102,7 @@ export function recomputeBoard(items: BoardItem[], connectors: Connector[]): Boa
         ...item,
         cells: source.cells,
         joinStatus: undefined,
+        joinNote: undefined,
         stale: watchedStale,
         w: dims.w,
         h: dims.h,
@@ -109,7 +111,7 @@ export function recomputeBoard(items: BoardItem[], connectors: Connector[]): Boa
 
     const left = inbound[0]!
     const right = inbound[1]!
-    const { cells, key } = leftJoin(left.cells ?? [], right.cells ?? [])
+    const { cells, key, aggregatedRightRows } = leftJoin(left.cells ?? [], right.cells ?? [])
     const joinStatus = key ? undefined : ('no-key' as const)
     const label = joinStatus === 'no-key' ? 'no join key' : item.text
     const dims = item.view === 'apercu' ? goldenDims('apercu', item.text) : goldenDims('chip', label)
@@ -117,6 +119,7 @@ export function recomputeBoard(items: BoardItem[], connectors: Connector[]): Boa
       ...item,
       cells,
       joinStatus,
+      joinNote: joinAggregateLog(right.text, aggregatedRightRows),
       stale: watchedStale,
       w: dims.w,
       h: dims.h,

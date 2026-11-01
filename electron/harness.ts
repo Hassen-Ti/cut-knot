@@ -165,7 +165,8 @@ async function runBoardImport(win: BrowserWindow) {
   const couts = process.env.CUT_KNOT_FIXTURE_COUTS
   const coutsV2 = process.env.CUT_KNOT_FIXTURE_COUTS_V2
   const couts1252 = process.env.CUT_KNOT_FIXTURE_COUTS_1252
-  if (!tournees || !couts || !coutsV2 || !couts1252) {
+  const coutsDupes = process.env.CUT_KNOT_FIXTURE_COUTS_DUPES
+  if (!tournees || !couts || !coutsV2 || !couts1252 || !coutsDupes) {
     throw new Error('CSV fixtures are required for the board import harness')
   }
 
@@ -262,6 +263,72 @@ async function runBoardImport(win: BrowserWindow) {
   await shot(win, 'step5-sum-899.png')
   await shot(win, 'step6-ratio-130.png')
 
+  const dupeId = (await win.webContents.executeJavaScript(`
+    (async () => {
+      const api = window.__cutknotBoard
+      const sDupe = api.createSource(200, 16)
+      await api.loadFromPath(sDupe, ${JSON.stringify(coutsDupes)})
+      api.setView(sDupe, 'chip')
+      api.retarget(${JSON.stringify(ids.cCost)}, sDupe)
+      api.setView(${JSON.stringify(ids.g1)}, 'apercu')
+      return sDupe
+    })()
+  `)) as string
+
+  await sleep(250)
+  const dupes = (await win.webContents.executeJavaScript(`
+    (() => {
+      const api = window.__cutknotBoard
+      const { items } = api.getState()
+      const g = items.find((i) => i.id === ${JSON.stringify(ids.g1)})
+      const kSum = items.find((i) => i.id === ${JSON.stringify(ids.kSum)})
+      const kRatio = items.find((i) => i.id === ${JSON.stringify(ids.kRatio)})
+      const cells = g?.cells ?? []
+      const row = cells.find((r) => r[0] === 'TRN002')
+      const logs = [...document.querySelectorAll('.wid-list .a')].map((el) => el.textContent ?? '')
+      return {
+        rowCount: Math.max(0, cells.length - 1),
+        trn002Type: row?.[6] ?? '',
+        trn002Montant: row?.[7] ?? '',
+        sum: kSum?.measure ?? '',
+        ratio: kRatio?.measure ?? '',
+        joinNote: g?.joinNote ?? '',
+        sourceId: ${JSON.stringify(dupeId)},
+        logged: logs.some((line) => line.includes('2 doublons agrégés')),
+      }
+    })()
+  `)) as {
+    rowCount: number
+    trn002Type: string
+    trn002Montant: string
+    sum: string
+    ratio: string
+    joinNote: string
+    sourceId: string
+    logged: boolean
+  }
+
+  if (dupes.rowCount !== 5) {
+    throw new Error(`Duplicate join should keep 5 left rows, got ${dupes.rowCount}`)
+  }
+  if (dupes.trn002Type !== 'Carburant | Péage') {
+    throw new Error(`Expected aggregated Type, got ${JSON.stringify(dupes.trn002Type)}`)
+  }
+  if (dupes.trn002Montant !== '162') {
+    throw new Error(`Expected aggregated Montant 162, got ${JSON.stringify(dupes.trn002Montant)}`)
+  }
+  if (dupes.sum !== '815,1') {
+    throw new Error(`Expected Somme Montant 815,1 got ${dupes.sum}`)
+  }
+  if (dupes.ratio !== '1,35') {
+    throw new Error(`Expected Coût / km 1,35 got ${dupes.ratio}`)
+  }
+  if (!dupes.joinNote.includes('2 doublons agrégés') || !dupes.logged) {
+    throw new Error(`Missing aggregation log: ${JSON.stringify(dupes)}`)
+  }
+
+  await shot(win, 'step-dupes-aggregated.png')
+
   const resultPath = process.env.CUT_KNOT_SMOKE_OUT
   if (resultPath) {
     let previous: Record<string, unknown> = {}
@@ -275,7 +342,7 @@ async function runBoardImport(win: BrowserWindow) {
       `${JSON.stringify(
         {
           ...previous,
-          board: { before, after, ok: true },
+          board: { before, after, dupes, ok: true },
         },
         null,
         2,

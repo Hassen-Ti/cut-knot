@@ -3,10 +3,13 @@ import fs from 'node:fs'
 import path from 'node:path'
 import { describe, it } from 'node:test'
 import { fileURLToPath } from 'node:url'
+import { applyCsvToSource } from '../src/board/compute.ts'
+import { sourceDims, type BoardItem } from '../src/board/model.ts'
 import {
   computeKpi,
   decodeCsvBytes,
   formatMeasure,
+  joinAggregateLog,
   leftJoin,
   parseCsv,
   parseNumber,
@@ -75,6 +78,7 @@ describe('numbers and KPI', () => {
     assert.equal(parseNumber('1 234,5 €'), 1234.5)
     assert.equal(parseNumber('186,4 €'), 186.4)
     assert.equal(parseNumber('99.8'), 99.8)
+    assert.equal(parseNumber('VU-07'), null)
   })
 
   it('sums Montant 765,1 then 899,6 and ratios 1,26 then 1,30', () => {
@@ -123,5 +127,86 @@ describe('join key', () => {
     const joined = leftJoin(left, right)
     assert.equal(joined.key, null)
     assert.deepEqual(joined.cells, left)
+  })
+
+  it('does not join AB12 with ab12', () => {
+    const joined = leftJoin(
+      [
+        ['ID', 'Km'],
+        ['AB12', '10'],
+      ],
+      [
+        ['ID', 'Montant'],
+        ['ab12', '99'],
+      ],
+    )
+    assert.equal(joined.cells[1]?.[2], '')
+    assert.equal(joined.aggregatedRightRows, 0)
+  })
+
+  it('does not join key values that differ only by case', () => {
+    const tournees = load('tournees.csv')
+    const cased = load('couts-case.csv')
+    const joined = leftJoin(tournees, cased)
+    const trn001 = joined.cells.find((row) => row[0] === 'TRN001')
+    const trn002 = joined.cells.find((row) => row[0] === 'TRN002')
+    assert.equal(trn001?.[7], '')
+    assert.equal(trn002?.[7], '112,0 €')
+    const sum = computeKpi(joined.cells, { agg: 'sum', column: 'Montant' })
+    assert.equal(formatMeasure(sum, 'sum'), '578,7')
+  })
+
+  it('aggregates right-side duplicate keys and keeps every left row', () => {
+    const tournees = load('tournees.csv')
+    const dupes = load('couts-dupes.csv')
+    const joined = leftJoin(tournees, dupes)
+    const trn002 = joined.cells.find((row) => row[0] === 'TRN002')
+    assert.equal(joined.cells.length, 6)
+    assert.equal(joined.aggregatedRightRows, 2)
+    assert.equal(trn002?.[5], 'VU-07')
+    assert.equal(trn002?.[6], 'Carburant | Péage')
+    assert.equal(trn002?.[7], '162')
+
+    const sum = computeKpi(joined.cells, { agg: 'sum', column: 'Montant' })
+    const ratio = computeKpi(joined.cells, { agg: 'ratio', numerator: 'Montant', denominator: 'Km' })
+    assert.equal(formatMeasure(sum, 'sum'), '815,1')
+    assert.equal(formatMeasure(ratio, 'ratio'), '1,35')
+    assert.equal(joinAggregateLog('couts-dupes.csv', joined.aggregatedRightRows), 'Join with couts-dupes.csv: 2 doublons agrégés')
+
+    const leftDupes = [
+      ['ID_tournée', 'Km'],
+      ['TRN002', '98'],
+      ['TRN002', '10'],
+    ]
+    const bothLeft = leftJoin(leftDupes, dupes)
+    assert.equal(bothLeft.cells.length, 3)
+    assert.equal(bothLeft.cells[1]?.[1], '98')
+    assert.equal(bothLeft.cells[2]?.[1], '10')
+    assert.equal(bothLeft.cells[1]?.[bothLeft.cells[1].length - 1], '162')
+    assert.equal(bothLeft.cells[2]?.[bothLeft.cells[2].length - 1], '162')
+  })
+})
+
+describe('source path', () => {
+  it('replaces the watched path when a new CSV has no path (drop)', () => {
+    const dims = sourceDims('chip', 'couts.csv')
+    const source: BoardItem = {
+      id: 's1',
+      type: 'source',
+      x: 0,
+      y: 0,
+      w: dims.w,
+      h: dims.h,
+      text: 'couts.csv',
+      filePath: '/tmp/old/couts.csv',
+      cells: [['A']],
+    }
+    const dropped = applyCsvToSource(source, {
+      name: 'couts-dupes.csv',
+      cells: [['A'], ['1']],
+      filePath: undefined,
+    })
+    assert.equal(dropped.filePath, undefined)
+    assert.equal(dropped.text, 'couts-dupes.csv')
   })
 })

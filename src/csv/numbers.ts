@@ -8,6 +8,7 @@ const JUNK_RE = /[€%]/g
 export function parseNumber(raw: string): number | null {
   let s = raw.replace(SPACE_RE, '').replace(JUNK_RE, '').trim()
   if (s === '') return null
+  if (/[A-Za-z]/.test(s)) return null
 
   const lastComma = s.lastIndexOf(',')
   const lastDot = s.lastIndexOf('.')
@@ -21,10 +22,7 @@ export function parseNumber(raw: string): number | null {
     s = s.replace(',', '.')
   }
 
-  s = s.replace(/[^0-9.+-]/g, '')
-  if (s === '' || s === '+' || s === '-' || s === '.' || s === '+.' || s === '-.') {
-    return null
-  }
+  if (!/^[+-]?(?:\d+\.?\d*|\.\d+)$/.test(s)) return null
   const n = Number(s)
   return Number.isFinite(n) ? n : null
 }

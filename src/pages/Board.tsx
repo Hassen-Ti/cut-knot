@@ -193,19 +193,34 @@ export default function Board() {
     setLog((prev) => [{ t, a, state: 'done' as const }, ...prev].slice(0, 12))
   }, [])
 
+  const logNewJoinNotes = useCallback(
+    (prev: BoardItem[], next: BoardItem[]) => {
+      for (const item of next) {
+        if (item.type !== 'golden' || !item.joinNote) continue
+        const before = prev.find((row) => row.id === item.id)
+        if (before?.joinNote !== item.joinNote) pushLog(item.joinNote)
+      }
+    },
+    [pushLog],
+  )
+
   const applyItems = useCallback((next: BoardItem[]) => {
+    const prev = itemsRef.current
     const computed = recomputeBoard(next, connectorsRef.current)
     itemsRef.current = computed
     setItems(computed)
-  }, [])
+    logNewJoinNotes(prev, computed)
+  }, [logNewJoinNotes])
 
   const applyConnectors = useCallback((next: Connector[]) => {
+    const prev = itemsRef.current
     connectorsRef.current = next
     setConnectors(next)
-    const computed = recomputeBoard(itemsRef.current, next)
+    const computed = recomputeBoard(prev, next)
     itemsRef.current = computed
     setItems(computed)
-  }, [])
+    logNewJoinNotes(prev, computed)
+  }, [logNewJoinNotes])
 
   const applyCsv = useCallback(
     (id: string, loaded: LoadedCsv) => {
@@ -815,7 +830,7 @@ export default function Board() {
       },
       loadFromText: (id, fileName, text) => {
         try {
-          applyCsv(id, { name: fileName, cells: parseCsv(text) })
+          applyCsv(id, { name: fileName, cells: parseCsv(text), filePath: undefined })
         } catch (error) {
           applyCsv(id, {
             name: fileName,
