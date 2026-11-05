@@ -4,113 +4,49 @@ import {
   useLayoutEffect,
   useRef,
   useState,
-  type PointerEvent as ReactPointerEvent,
+  type DragEvent as ReactDragEvent,
   type KeyboardEvent as ReactKeyboardEvent,
+  type PointerEvent as ReactPointerEvent,
 } from 'react'
 import { Link } from 'react-router-dom'
+import { applyCsvToSource, markSourceAndGoldensStale, recomputeBoard } from '../board/compute.ts'
+import {
+  loadedCsvFromFile,
+  pickCsvFile,
+  readCsvFromPath,
+  type LoadedCsv,
+} from '../board/files.ts'
+import {
+  EMPTY_SOURCE_LABEL,
+  KPI_H,
+  KPI_W,
+  MAX_SOURCES,
+  ZOOM_STEP,
+  canvasPoint,
+  clampZoom,
+  edgePoint,
+  goldenChipLabel,
+  goldenDims,
+  isEditableType,
+  isToggleable,
+  rectsIntersect,
+  snap,
+  sourceCount,
+  sourceDims,
+  type BoardItem,
+  type Connector,
+  type ItemType,
+  type SourceView,
+} from '../board/model.ts'
 import { Footer, Shell3, WhatIveDone, type ToolName } from '../components/Shell'
+import { KPI_AGG_LABELS, KPI_AGGS, isKpiAgg, numericColumnNames, parseCsv } from '../csv/index.ts'
 
-type ItemType = 'arrow' | 'source' | 'golden' | 'kpi'
-
-type SourceView = 'chip' | 'apercu'
-
-type BoardItem = {
-  id: string
-  type: ItemType
-  x: number
-  y: number
-  w: number
-  h: number
-  text: string
-  /** Mini-table mock grid (header row + data rows). Used by table / source / golden aperçu. */
-  cells?: string[][]
-  /** Source & Golden display mode: compact chip or mini-table aperçu. */
-  view?: SourceView
-  /** KPI big measure value. */
-  measure?: string
-  /** KPI sparkline / mini-bar series (0–100-ish). */
-  spark?: number[]
-  /** KPI chart style. */
-  chartKind?: 'spark' | 'bars'
-}
-
-type Connector = {
-  id: string
-  type: 'connector'
-  fromId: string
-  toId: string
-}
-
-const GRID = 8
-const CHIP_H = 36
-const APERCU_W = 340
-const APERCU_H = 176
-const GOLDEN_APERCU_W = 360
-const GOLDEN_APERCU_H = 184
-const KPI_W = 168
-const KPI_H = 128
-const ZOOM_MIN = 0.25
-const ZOOM_MAX = 2
-const ZOOM_STEP = 0.1
-
-function clampZoom(z: number) {
-  return Math.min(ZOOM_MAX, Math.max(ZOOM_MIN, Math.round(z * 100) / 100))
-}
-
-const TOURNEES_CELLS: string[][] = [
-  ['ID_tournée', 'Date', 'Zone', 'Km', 'Coût (€)'],
-  ['TRN001', '02/05/2024', 'Nord', '142', '186,4'],
-  ['TRN002', '02/05/2024', 'Sud', '98', '112,0'],
-  ['TRN003', '03/05/2024', 'Est', '210', '268,5'],
-  ['TRN004', '03/05/2024', 'Ouest', '156', '198,2'],
-  ['TRN005', '04/05/2024', 'Nord', '87', '94,5'],
+const defaultTimeline = [
+  { t: '14:02', a: 'Start draft', state: 'done' as const },
+  { t: '14:08', a: 'Open Board', state: 'done' as const },
 ]
 
-const COUTS_CELLS: string[][] = [
-  ['ID_coût', 'Véhicule', 'Type', 'Montant', 'Budget'],
-  ['CST001', 'VU-23', 'Carburant', '420,5 €', '400 €'],
-  ['CST002', 'VU-07', 'Carburant', '310,0 €', '320 €'],
-  ['CST003', 'VU-12', 'Entretien', '180,0 €', '200 €'],
-  ['CST004', 'VU-15', 'Carburant', '355,2 €', '340 €'],
-  ['CST005', 'VU-23', 'Péage', '95,0 €', '80 €'],
-]
-
-/** Clean joined dataset — Golden aperçu. */
-const GOLDEN_CELLS: string[][] = [
-  ['ID', 'Zone', 'Km', 'Coût', '€/km'],
-  ['TRN001', 'Nord', '142', '186,4', '1,31'],
-  ['TRN002', 'Sud', '98', '112,0', '1,14'],
-  ['TRN003', 'Est', '210', '268,5', '1,28'],
-  ['TRN004', 'Ouest', '156', '198,2', '1,27'],
-  ['TRN005', 'Nord', '87', '94,5', '1,09'],
-]
-
-const EMPTY_TABLE_CELLS: string[][] = [
-  ['A', 'B', 'C', 'D', 'E'],
-  ['—', '—', '—', '—', '—'],
-  ['—', '—', '—', '—', '—'],
-  ['—', '—', '—', '—', '—'],
-  ['—', '—', '—', '—', '—'],
-]
-
-function chipWidth(text: string) {
-  return Math.max(112, Math.min(240, 44 + text.length * 7.5))
-}
-
-function sourceDims(view: SourceView, text: string) {
-  if (view === 'apercu') return { w: APERCU_W, h: APERCU_H }
-  return { w: chipWidth(text), h: CHIP_H }
-}
-
-function goldenDims(view: SourceView, text: string) {
-  if (view === 'apercu') return { w: GOLDEN_APERCU_W, h: GOLDEN_APERCU_H }
-  const label = text.startsWith('Golden') ? text : `Golden · ${text}`
-  return { w: chipWidth(label), h: CHIP_H }
-}
-
-function goldenChipLabel(text: string) {
-  return text.startsWith('Golden') ? text : `Golden · ${text}`
-}
+let nextId = 1
 
 function Sparkline({ values, kind = 'spark' }: { values: number[]; kind?: 'spark' | 'bars' }) {
   const w = 140
@@ -168,159 +104,53 @@ function Sparkline({ values, kind = 'spark' }: { values: number[]; kind?: 'spark
   )
 }
 
-const initialItems: BoardItem[] = [
-  {
-    id: 'src1',
+function makeSource(x: number, y: number, alt: boolean): BoardItem {
+  const dims = sourceDims('chip', EMPTY_SOURCE_LABEL)
+  return {
+    id: `s${nextId++}`,
     type: 'source',
-    x: 40,
-    y: 40,
-    ...sourceDims('chip', 'tournées.csv'),
-    text: 'tournées.csv',
+    x: snap(x, alt),
+    y: snap(y, alt),
+    w: dims.w,
+    h: dims.h,
+    text: EMPTY_SOURCE_LABEL,
     view: 'chip',
-    cells: TOURNEES_CELLS,
-  },
-  {
-    id: 'src2',
-    type: 'source',
-    x: 40,
-    y: 100,
-    ...sourceDims('apercu', 'coûts.csv'),
-    text: 'coûts.csv',
-    view: 'apercu',
-    cells: COUTS_CELLS,
-  },
-  {
-    id: 'src3',
-    type: 'source',
-    x: 400,
-    y: 36,
-    ...sourceDims('chip', 'coûts v2.csv'),
-    text: 'coûts v2.csv',
-    view: 'chip',
-    cells: COUTS_CELLS,
-  },
-  {
-    id: 'g1',
+  }
+}
+
+function makeGolden(x: number, y: number, alt: boolean): BoardItem {
+  const dims = goldenDims('chip', 'last-mile')
+  return {
+    id: `g${nextId++}`,
     type: 'golden',
-    x: 560,
-    y: 80,
-    ...goldenDims('chip', 'last-mile'),
+    x: snap(x, alt),
+    y: snap(y, alt),
+    w: dims.w,
+    h: dims.h,
     text: 'last-mile',
     view: 'chip',
-    cells: GOLDEN_CELLS,
-  },
-  {
-    id: 'k1',
-    type: 'kpi',
-    x: 860,
-    y: 40,
-    w: KPI_W,
-    h: KPI_H,
-    text: 'Coût / km',
-    measure: '1,24 €',
-    spark: [18, 22, 19, 28, 24, 31, 27, 35, 30, 33],
-    chartKind: 'spark',
-  },
-  {
-    id: 'k2',
-    type: 'kpi',
-    x: 1060,
-    y: 40,
-    w: KPI_W,
-    h: KPI_H,
-    text: 'Écart vs cible',
-    measure: '+8,2 %',
-    spark: [12, 18, 15, 22, 28, 25, 32, 30, 38, 35],
-    chartKind: 'bars',
-  },
-  {
-    id: 'k3',
-    type: 'kpi',
-    x: 960,
-    y: 200,
-    w: KPI_W,
-    h: KPI_H,
-    text: 'Tournées critiques',
-    measure: '3',
-    spark: [5, 4, 6, 3, 4, 2, 5, 3, 4, 3],
-    chartKind: 'spark',
-  },
-]
-
-const initialConnectors: Connector[] = [
-  { id: 'c1', type: 'connector', fromId: 'src1', toId: 'g1' },
-  { id: 'c2', type: 'connector', fromId: 'src3', toId: 'g1' },
-  { id: 'c3', type: 'connector', fromId: 'g1', toId: 'k1' },
-  { id: 'c4', type: 'connector', fromId: 'g1', toId: 'k2' },
-  { id: 'c5', type: 'connector', fromId: 'g1', toId: 'k3' },
-]
-
-const defaultTimeline = [
-  { t: '14:02', a: 'Start draft', state: 'done' as const },
-  { t: '14:05', a: 'Import data', state: 'done' as const },
-  { t: '14:08', a: 'Open Board', state: 'done' as const },
-  { t: '14:12', a: 'Data transformation', state: 'current' as const },
-  { t: '14:18', a: 'Preliminary analysis', state: 'deleted' as const },
-]
-
-let nextId = 20
-
-function snap(v: number, disable: boolean) {
-  if (disable) return v
-  return Math.round(v / GRID) * GRID
-}
-
-function rectsIntersect(
-  a: { x: number; y: number; w: number; h: number },
-  b: { x: number; y: number; w: number; h: number },
-) {
-  return a.x < b.x + b.w && a.x + a.w > b.x && a.y < b.y + b.h && a.y + a.h > b.y
-}
-
-function itemCenter(it: BoardItem) {
-  return { x: it.x + it.w / 2, y: it.y + it.h / 2 }
-}
-
-/** Edge midpoint facing toward the other item. */
-function edgePoint(from: BoardItem, to: BoardItem) {
-  const fc = itemCenter(from)
-  const tc = itemCenter(to)
-  const dx = tc.x - fc.x
-  const dy = tc.y - fc.y
-  if (Math.abs(dx) > Math.abs(dy)) {
-    return dx > 0
-      ? { x: from.x + from.w, y: fc.y }
-      : { x: from.x, y: fc.y }
   }
-  return dy > 0
-    ? { x: fc.x, y: from.y + from.h }
-    : { x: fc.x, y: from.y }
 }
 
-function canvasPoint(el: HTMLDivElement, clientX: number, clientY: number, zoom: number) {
-  const rect = el.getBoundingClientRect()
+function makeKpi(x: number, y: number, alt: boolean): BoardItem {
   return {
-    x: (clientX - rect.left + el.scrollLeft) / zoom,
-    y: (clientY - rect.top + el.scrollTop) / zoom,
+    id: `k${nextId++}`,
+    type: 'kpi',
+    x: snap(x, alt),
+    y: snap(y, alt),
+    w: KPI_W,
+    h: KPI_H,
+    text: 'Nouveau KPI',
+    measure: '—',
+    spark: [20, 28, 24, 35, 30, 42, 38, 45],
+    chartKind: 'spark',
   }
-}
-
-function isEditableType(type: ItemType) {
-  return (
-    type === 'source' ||
-    type === 'golden' ||
-    type === 'kpi'
-  )
-}
-
-function isToggleable(type: ItemType) {
-  return type === 'source' || type === 'golden'
 }
 
 export default function Board() {
   const [tool, setTool] = useState<ToolName>('Select')
-  const [items, setItems] = useState<BoardItem[]>(initialItems)
-  const [connectors, setConnectors] = useState<Connector[]>(initialConnectors)
+  const [items, setItems] = useState<BoardItem[]>([])
+  const [connectors, setConnectors] = useState<Connector[]>([])
   const [selectedIds, setSelectedIds] = useState<string[]>([])
   const [log, setLog] = useState(defaultTimeline)
   const [editingId, setEditingId] = useState<string | null>(null)
@@ -328,9 +158,10 @@ export default function Board() {
   const [connectorDraft, setConnectorDraft] = useState<string | null>(null)
   const [spaceDown, setSpaceDown] = useState(false)
   const [zoom, setZoom] = useState(1)
+  const [dropTargetId, setDropTargetId] = useState<string | 'canvas' | null>(null)
 
   const dragRef = useRef<{
-    mode: 'move' | 'marquee' | 'pan'
+    mode: 'move' | 'marquee' | 'pan' | 'retarget'
     startX: number
     startY: number
     origScrollLeft: number
@@ -338,6 +169,8 @@ export default function Board() {
     origins: Record<string, { x: number; y: number }>
     moved: boolean
     count: number
+    connectorId?: string
+    end?: 'from' | 'to'
   } | null>(null)
   const canvasRef = useRef<HTMLDivElement>(null)
   const zoomRef = useRef(zoom)
@@ -347,6 +180,8 @@ export default function Board() {
   const clickToggleTimer = useRef<ReturnType<typeof setTimeout> | null>(null)
   const itemsRef = useRef(items)
   itemsRef.current = items
+  const connectorsRef = useRef(connectors)
+  connectorsRef.current = connectors
   const selectedRef = useRef(selectedIds)
   selectedRef.current = selectedIds
   const marqueeRef = useRef(marquee)
@@ -357,6 +192,95 @@ export default function Board() {
     const t = `${String(now.getHours()).padStart(2, '0')}:${String(now.getMinutes()).padStart(2, '0')}`
     setLog((prev) => [{ t, a, state: 'done' as const }, ...prev].slice(0, 12))
   }, [])
+
+  const logNewJoinNotes = useCallback(
+    (prev: BoardItem[], next: BoardItem[]) => {
+      for (const item of next) {
+        if (item.type !== 'golden' || !item.joinNote) continue
+        const before = prev.find((row) => row.id === item.id)
+        if (before?.joinNote !== item.joinNote) pushLog(item.joinNote)
+      }
+    },
+    [pushLog],
+  )
+
+  const applyItems = useCallback((next: BoardItem[]) => {
+    const prev = itemsRef.current
+    const computed = recomputeBoard(next, connectorsRef.current)
+    itemsRef.current = computed
+    setItems(computed)
+    logNewJoinNotes(prev, computed)
+  }, [logNewJoinNotes])
+
+  const applyConnectors = useCallback((next: Connector[]) => {
+    const prev = itemsRef.current
+    connectorsRef.current = next
+    setConnectors(next)
+    const computed = recomputeBoard(prev, next)
+    itemsRef.current = computed
+    setItems(computed)
+    logNewJoinNotes(prev, computed)
+  }, [logNewJoinNotes])
+
+  const applyCsv = useCallback(
+    (id: string, loaded: LoadedCsv) => {
+      applyItems(
+        itemsRef.current.map((item) => (item.id === id ? applyCsvToSource(item, loaded) : item)),
+      )
+      if (loaded.error) {
+        pushLog(`Erreur « ${loaded.name} »`)
+      } else {
+        pushLog(`Import « ${loaded.name} »`)
+      }
+    },
+    [applyItems, pushLog],
+  )
+
+  const chooseCsv = useCallback(
+    async (id: string) => {
+      const loaded = await pickCsvFile()
+      if (!loaded) return
+      applyCsv(id, loaded)
+    },
+    [applyCsv],
+  )
+
+  const reloadSource = useCallback(
+    async (id: string) => {
+      const item = itemsRef.current.find((row) => row.id === id)
+      if (!item?.filePath) return
+      const loaded = await readCsvFromPath(item.filePath)
+      applyCsv(id, loaded)
+    },
+    [applyCsv],
+  )
+
+  const sourceWatchKey = items
+    .filter((it) => it.type === 'source' && it.filePath)
+    .map((it) => `${it.id}:${it.filePath}`)
+    .sort()
+    .join('|')
+
+  useEffect(() => {
+    const api = window.cutknot
+    if (!api) return
+    const watched = itemsRef.current.filter((item) => item.type === 'source' && item.filePath)
+    const stops: Array<() => void> = []
+    for (const item of watched) {
+      const sourceId = item.id
+      const filePath = item.filePath
+      if (!filePath) continue
+      stops.push(
+        api.watchFile(filePath, () => {
+          setItems((prev) => markSourceAndGoldensStale(prev, connectorsRef.current, sourceId))
+          pushLog('Fichier modifié')
+        }),
+      )
+    }
+    return () => {
+      for (const stop of stops) stop()
+    }
+  }, [sourceWatchKey, pushLog])
 
   useEffect(() => {
     const onKeyDown = (e: KeyboardEvent) => {
@@ -372,10 +296,12 @@ export default function Board() {
         const ids = selectedRef.current
         if (!ids.length) return
         const idSet = new Set(ids)
-        setItems((prev) => prev.filter((it) => !idSet.has(it.id)))
-        setConnectors((prev) =>
-          prev.filter((c) => !idSet.has(c.id) && !idSet.has(c.fromId) && !idSet.has(c.toId)),
+        applyConnectors(
+          connectorsRef.current.filter(
+            (c) => !idSet.has(c.id) && !idSet.has(c.fromId) && !idSet.has(c.toId),
+          ),
         )
+        applyItems(itemsRef.current.filter((it) => !idSet.has(it.id)))
         setSelectedIds([])
         setConnectorDraft(null)
         pushLog(ids.length === 1 ? 'Deleted 1 item' : `Deleted ${ids.length} items`)
@@ -395,7 +321,7 @@ export default function Board() {
       window.removeEventListener('keydown', onKeyDown)
       window.removeEventListener('keyup', onKeyUp)
     }
-  }, [editingId, pushLog])
+  }, [editingId, pushLog, applyItems, applyConnectors])
 
   useEffect(() => {
     if (editingId && editRef.current) {
@@ -473,8 +399,7 @@ export default function Board() {
       if (!(e.ctrlKey || e.metaKey)) return
       e.preventDefault()
       const oldZ = zoomRef.current
-      const direction = e.deltaY < 0 ? 1 : -1
-      const factor = direction > 0 ? 1.1 : 1 / 1.1
+      const factor = e.deltaY < 0 ? 1.1 : 1 / 1.1
       applyZoomAt(oldZ * factor, e.clientX, e.clientY)
     }
     canvas.addEventListener('wheel', onWheel, { passive: false })
@@ -535,7 +460,7 @@ export default function Board() {
       }
       if (connectorDraft === item.id) return
       const id = `c${nextId++}`
-      setConnectors((prev) => [...prev, { id, type: 'connector', fromId: connectorDraft, toId: item.id }])
+      applyConnectors([...connectorsRef.current, { id, type: 'connector', fromId: connectorDraft, toId: item.id }])
       setConnectorDraft(null)
       setSelectedIds([id])
       setTool('Select')
@@ -582,11 +507,29 @@ export default function Board() {
     e.stopPropagation()
     if (tool === 'Arrow') return
     if (e.shiftKey) {
-      setSelectedIds((prev) =>
-        prev.includes(id) ? prev.filter((x) => x !== id) : [...prev, id],
-      )
+      setSelectedIds((prev) => (prev.includes(id) ? prev.filter((x) => x !== id) : [...prev, id]))
     } else {
       setSelectedIds([id])
+    }
+  }
+
+  const onPointerDownHandle = (e: ReactPointerEvent, id: string, end: 'from' | 'to') => {
+    if (spaceDown || e.button === 1) return
+    e.stopPropagation()
+    e.preventDefault()
+    setSelectedIds([id])
+    ;(e.currentTarget as SVGElement).setPointerCapture(e.pointerId)
+    dragRef.current = {
+      mode: 'retarget',
+      startX: e.clientX,
+      startY: e.clientY,
+      origScrollLeft: 0,
+      origScrollTop: 0,
+      origins: {},
+      moved: false,
+      count: 1,
+      connectorId: id,
+      end,
     }
   }
 
@@ -599,6 +542,11 @@ export default function Board() {
     if (d.mode === 'pan') {
       canvas.scrollLeft = d.origScrollLeft - (e.clientX - d.startX)
       canvas.scrollTop = d.origScrollTop - (e.clientY - d.startY)
+      d.moved = true
+      return
+    }
+
+    if (d.mode === 'retarget') {
       d.moved = true
       return
     }
@@ -635,10 +583,37 @@ export default function Board() {
     )
   }
 
+  const itemAtPoint = (clientX: number, clientY: number) => {
+    const canvas = canvasRef.current
+    if (!canvas) return undefined
+    const p = canvasPoint(canvas, clientX, clientY, zoomRef.current)
+    const hit = [...itemsRef.current]
+      .reverse()
+      .find((it) => rectsIntersect({ x: p.x, y: p.y, w: 1, h: 1 }, { x: it.x, y: it.y, w: it.w, h: it.h }))
+    return hit
+  }
+
   const onPointerUp = (e: ReactPointerEvent) => {
     const d = dragRef.current
     if (!d) return
     const canvas = canvasRef.current
+
+    if (d.mode === 'retarget' && d.connectorId && d.end) {
+      const hit = itemAtPoint(e.clientX, e.clientY)
+      if (hit) {
+        applyConnectors(
+          connectorsRef.current.map((c) => {
+            if (c.id !== d.connectorId) return c
+            if (d.end === 'from' && hit.id !== c.toId) return { ...c, fromId: hit.id }
+            if (d.end === 'to' && hit.id !== c.fromId) return { ...c, toId: hit.id }
+            return c
+          }),
+        )
+        pushLog('Flèche déplacée')
+      }
+      dragRef.current = null
+      return
+    }
 
     if (d.mode === 'marquee' && canvas) {
       const box =
@@ -666,30 +641,26 @@ export default function Board() {
     } else if (d.mode === 'move' && d.moved) {
       pushLog(d.count === 1 ? 'Moved 1 item' : `Moved ${d.count} items`)
     } else if (d.mode === 'move' && !d.moved) {
-      // Click without drag: toggle source/golden chip ↔ aperçu
       const ids = Object.keys(d.origins)
       if (ids.length === 1) {
-        const id = ids[0]
+        const id = ids[0]!
+        const current = itemsRef.current.find((i) => i.id === id)
+        if (current?.type === 'source' && !current.cells && !current.error) {
+          void chooseCsv(id)
+          dragRef.current = null
+          return
+        }
         if (clickToggleTimer.current) clearTimeout(clickToggleTimer.current)
         clickToggleTimer.current = setTimeout(() => {
           clickToggleTimer.current = null
           const it = itemsRef.current.find((i) => i.id === id)
           if (!it || !isToggleable(it.type)) return
           const nextView: SourceView = it.view === 'apercu' ? 'chip' : 'apercu'
-          const dims =
-            it.type === 'golden'
-              ? goldenDims(nextView, it.text)
-              : sourceDims(nextView, it.text)
+          const dims = it.type === 'golden' ? goldenDims(nextView, it.text) : sourceDims(nextView, it.text)
           setItems((prev) =>
-            prev.map((row) =>
-              row.id === it.id ? { ...row, view: nextView, w: dims.w, h: dims.h } : row,
-            ),
+            prev.map((row) => (row.id === it.id ? { ...row, view: nextView, w: dims.w, h: dims.h } : row)),
           )
-          pushLog(
-            nextView === 'apercu'
-              ? `Aperçu « ${it.text} »`
-              : `Chip « ${it.text} »`,
-          )
+          pushLog(nextView === 'apercu' ? `Aperçu « ${it.text} »` : `Chip « ${it.text} »`)
         }, 220)
       }
     }
@@ -728,62 +699,18 @@ export default function Board() {
 
     const p = canvasPoint(canvas, e.clientX, e.clientY, zoomRef.current)
 
-    if (
-      tool === 'Source' ||
-      tool === 'Golden' ||
-      tool === 'KPI'
-    ) {
-      const type: ItemType =
-        tool === 'Source'
-          ? 'source'
-          : tool === 'Golden'
-            ? 'golden'
-            : 'kpi'
-      const id = `${type[0]}${nextId++}`
-      const defaults: Record<
-        'source' | 'golden' | 'kpi',
-        Partial<BoardItem> & { w: number; h: number; text: string }
-      > = {
-        source: {
-          ...sourceDims('chip', 'fichier.csv'),
-          text: 'fichier.csv',
-          view: 'chip',
-          cells: EMPTY_TABLE_CELLS,
-        },
-        golden: {
-          ...goldenDims('chip', 'last-mile'),
-          text: 'last-mile',
-          view: 'chip',
-          cells: GOLDEN_CELLS,
-        },
-        kpi: {
-          w: KPI_W,
-          h: KPI_H,
-          text: 'Nouveau KPI',
-          measure: '—',
-          spark: [20, 28, 24, 35, 30, 42, 38, 45],
-          chartKind: 'spark',
-        },
+    if (tool === 'Source' || tool === 'Golden' || tool === 'KPI') {
+      const type: ItemType = tool === 'Source' ? 'source' : tool === 'Golden' ? 'golden' : 'kpi'
+      if (type === 'source' && sourceCount(items) >= MAX_SOURCES) {
+        pushLog('10 sources max')
+        return
       }
-      const def = defaults[type]
-      const item: BoardItem = {
-        id,
-        type,
-        x: snap(p.x, e.altKey),
-        y: snap(p.y, e.altKey),
-        w: def.w,
-        h: def.h,
-        text: def.text,
-        ...(def.cells ? { cells: def.cells } : {}),
-        ...(def.view ? { view: def.view } : {}),
-        ...(def.measure != null ? { measure: def.measure } : {}),
-        ...(def.spark ? { spark: def.spark } : {}),
-        ...(def.chartKind ? { chartKind: def.chartKind } : {}),
-      }
-      setItems((prev) => [...prev, item])
-      setSelectedIds([id])
+      const item =
+        type === 'source' ? makeSource(p.x, p.y, e.altKey) : type === 'golden' ? makeGolden(p.x, p.y, e.altKey) : makeKpi(p.x, p.y, e.altKey)
+      applyItems([...items, item])
+      setSelectedIds([item.id])
       setTool('Select')
-      pushLog(`Created ${type} “${def.text}”`)
+      pushLog(`Created ${type} “${item.text}”`)
       return
     }
 
@@ -830,10 +757,149 @@ export default function Board() {
     }
   }
 
-  const primaryItem =
-    selectedIds.length === 1 ? items.find((i) => i.id === selectedIds[0]) : undefined
-  const primaryConn =
-    selectedIds.length === 1 ? connectors.find((c) => c.id === selectedIds[0]) : undefined
+  const onDragOverCanvas = (e: ReactDragEvent) => {
+    if (![...e.dataTransfer.types].includes('Files')) return
+    e.preventDefault()
+    e.dataTransfer.dropEffect = 'copy'
+    setDropTargetId((prev) => prev ?? 'canvas')
+  }
+
+  const onDragOverItem = (e: ReactDragEvent, item: BoardItem) => {
+    if (item.type !== 'source') return
+    if (![...e.dataTransfer.types].includes('Files')) return
+    e.preventDefault()
+    e.stopPropagation()
+    e.dataTransfer.dropEffect = 'copy'
+    setDropTargetId(item.id)
+  }
+
+  const finishDrop = () => setDropTargetId(null)
+
+  const dropOnSource = async (id: string, file: File) => {
+    const loaded = await loadedCsvFromFile(file)
+    applyCsv(id, loaded)
+  }
+
+  const dropOnCanvas = async (file: File, x: number, y: number) => {
+    if (sourceCount(itemsRef.current) >= MAX_SOURCES) {
+      pushLog('10 sources max')
+      return
+    }
+    const item = makeSource(x, y, false)
+    applyItems([...itemsRef.current, item])
+    setSelectedIds([item.id])
+    const loaded = await loadedCsvFromFile(file)
+    applyCsv(item.id, loaded)
+  }
+
+  const onDropCanvas = (e: ReactDragEvent) => {
+    if (![...e.dataTransfer.types].includes('Files')) return
+    e.preventDefault()
+    finishDrop()
+    const file = [...e.dataTransfer.files].find((f) => f.name.toLowerCase().endsWith('.csv'))
+    if (!file) return
+    const canvas = canvasRef.current
+    if (!canvas) return
+    const p = canvasPoint(canvas, e.clientX, e.clientY, zoomRef.current)
+    void dropOnCanvas(file, p.x, p.y)
+  }
+
+  const onDropItem = (e: ReactDragEvent, item: BoardItem) => {
+    if (item.type !== 'source') return
+    if (![...e.dataTransfer.types].includes('Files')) return
+    e.preventDefault()
+    e.stopPropagation()
+    finishDrop()
+    const file = [...e.dataTransfer.files].find((f) => f.name.toLowerCase().endsWith('.csv'))
+    if (!file) return
+    void dropOnSource(item.id, file)
+  }
+
+  const setKpiPicker = (id: string, patch: Partial<Pick<BoardItem, 'kpiAgg' | 'kpiColumn' | 'kpiNumerator' | 'kpiDenominator'>>) => {
+    applyItems(
+      itemsRef.current.map((item) => (item.id === id ? { ...item, ...patch, kpiReady: true } : item)),
+    )
+  }
+
+  useEffect(() => {
+    window.__cutknotBoard = {
+      getState: () => ({ items: itemsRef.current, connectors: connectorsRef.current }),
+      loadFromPath: async (id, filePath) => {
+        const loaded = await readCsvFromPath(filePath)
+        applyCsv(id, loaded)
+      },
+      loadFromText: (id, fileName, text) => {
+        try {
+          applyCsv(id, { name: fileName, cells: parseCsv(text), filePath: undefined })
+        } catch (error) {
+          applyCsv(id, {
+            name: fileName,
+            error: error instanceof Error ? error.message : 'Fichier illisible',
+          })
+        }
+      },
+      createSource: (x, y) => {
+        const item = makeSource(x, y, false)
+        applyItems([...itemsRef.current, item])
+        return item.id
+      },
+      createGolden: (x, y) => {
+        const item = makeGolden(x, y, false)
+        applyItems([...itemsRef.current, item])
+        return item.id
+      },
+      createKpi: (x, y) => {
+        const item = makeKpi(x, y, false)
+        applyItems([...itemsRef.current, item])
+        return item.id
+      },
+      connect: (fromId, toId) => {
+        const id = `c${nextId++}`
+        applyConnectors([...connectorsRef.current, { id, type: 'connector', fromId, toId }])
+        return id
+      },
+      retarget: (connectorId, fromId, toId) => {
+        applyConnectors(
+          connectorsRef.current.map((c) => {
+            if (c.id !== connectorId) return c
+            return { ...c, fromId: fromId ?? c.fromId, toId: toId ?? c.toId }
+          }),
+        )
+      },
+      setKpiPicker: (id, spec) => {
+        applyItems(
+          itemsRef.current.map((item) =>
+            item.id === id
+              ? {
+                  ...item,
+                  kpiReady: true,
+                  kpiAgg: spec.agg,
+                  kpiColumn: spec.column ?? item.kpiColumn,
+                  kpiNumerator: spec.numerator ?? item.kpiNumerator,
+                  kpiDenominator: spec.denominator ?? item.kpiDenominator,
+                  text: spec.title ?? item.text,
+                }
+              : item,
+          ),
+        )
+      },
+      setView: (id, view) => {
+        applyItems(
+          itemsRef.current.map((item) => {
+            if (item.id !== id) return item
+            const dims = item.type === 'golden' ? goldenDims(view, item.text) : sourceDims(view, item.text)
+            return { ...item, view, w: dims.w, h: dims.h }
+          }),
+        )
+      },
+    }
+    return () => {
+      delete window.__cutknotBoard
+    }
+  }, [applyCsv, applyItems, applyConnectors])
+
+  const primaryItem = selectedIds.length === 1 ? items.find((i) => i.id === selectedIds[0]) : undefined
+  const primaryConn = selectedIds.length === 1 ? connectors.find((c) => c.id === selectedIds[0]) : undefined
 
   const widItems =
     selectedIds.length > 1
@@ -873,12 +939,7 @@ export default function Board() {
               <button type="button" className="board-zoom-btn" aria-label="Zoom arrière" onClick={() => zoomBy(-ZOOM_STEP)}>
                 −
               </button>
-              <button
-                type="button"
-                className="board-zoom-pct"
-                title="Double-clic : 100%"
-                onDoubleClick={zoomTo100}
-              >
+              <button type="button" className="board-zoom-pct" title="Double-clic : 100%" onDoubleClick={zoomTo100}>
                 {Math.round(zoom * 100)}%
               </button>
               <button type="button" className="board-zoom-btn" aria-label="Zoom avant" onClick={() => zoomBy(ZOOM_STEP)}>
@@ -890,201 +951,326 @@ export default function Board() {
             </div>
           </div>
           <div
-            className={`board-canvas tool-${tool.toLowerCase()}${spaceDown ? ' panning' : ''}${connectorDraft ? ' connecting' : ''}`}
+            className={`board-canvas tool-${tool.toLowerCase()}${spaceDown ? ' panning' : ''}${connectorDraft ? ' connecting' : ''}${dropTargetId === 'canvas' ? ' is-drop-target' : ''}`}
             ref={canvasRef}
             onPointerDown={onCanvasPointerDown}
             onPointerMove={onPointerMove}
             onPointerUp={onPointerUp}
             onPointerCancel={onPointerUp}
+            onDragOver={onDragOverCanvas}
+            onDragLeave={() => setDropTargetId(null)}
+            onDrop={onDropCanvas}
           >
-            <div
-              className="board-zoom-space"
-              style={{ width: canvasW * zoom, height: canvasH * zoom }}
-            >
-            <div
-              className="board-world"
-              style={{
-                width: canvasW,
-                height: canvasH,
-                transform: `scale(${zoom})`,
-                transformOrigin: '0 0',
-              }}
-            >
-              <svg className="board-connectors" width={canvasW} height={canvasH}>
-                <defs>
-                  <marker
-                    id="tala-arrowhead"
-                    markerWidth="8"
-                    markerHeight="8"
-                    refX="6"
-                    refY="3"
-                    orient="auto"
-                    markerUnits="strokeWidth"
-                  >
-                    <path d="M0,0 L6,3 L0,6 Z" fill="currentColor" />
-                  </marker>
-                </defs>
-                {connectors.map((c) => {
-                  const from = items.find((i) => i.id === c.fromId)
-                  const to = items.find((i) => i.id === c.toId)
-                  if (!from || !to) return null
-                  const a = edgePoint(from, to)
-                  const b = edgePoint(to, from)
-                  const selected = selectedIds.includes(c.id)
-                  return (
-                    <g
-                      key={c.id}
-                      className={`board-connector${selected ? ' selected' : ''}`}
-                      onPointerDown={(ev) => onPointerDownConnector(ev, c.id)}
+            <div className="board-zoom-space" style={{ width: canvasW * zoom, height: canvasH * zoom }}>
+              <div
+                className="board-world"
+                style={{
+                  width: canvasW,
+                  height: canvasH,
+                  transform: `scale(${zoom})`,
+                  transformOrigin: '0 0',
+                }}
+              >
+                <svg className="board-connectors" width={canvasW} height={canvasH}>
+                  <defs>
+                    <marker
+                      id="tala-arrowhead"
+                      markerWidth="8"
+                      markerHeight="8"
+                      refX="6"
+                      refY="3"
+                      orient="auto"
+                      markerUnits="strokeWidth"
                     >
-                      <line
-                        x1={a.x}
-                        y1={a.y}
-                        x2={b.x}
-                        y2={b.y}
-                        stroke="transparent"
-                        strokeWidth={14}
-                        style={{ cursor: 'pointer' }}
-                      />
-                      <line
-                        x1={a.x}
-                        y1={a.y}
-                        x2={b.x}
-                        y2={b.y}
-                        stroke="currentColor"
-                        strokeWidth={selected ? 2.5 : 1.75}
-                        markerEnd="url(#tala-arrowhead)"
-                        style={{ pointerEvents: 'none' }}
-                      />
-                    </g>
+                      <path d="M0,0 L6,3 L0,6 Z" fill="currentColor" />
+                    </marker>
+                  </defs>
+                  {connectors.map((c) => {
+                    const from = items.find((i) => i.id === c.fromId)
+                    const to = items.find((i) => i.id === c.toId)
+                    if (!from || !to) return null
+                    const a = edgePoint(from, to)
+                    const b = edgePoint(to, from)
+                    const selected = selectedIds.includes(c.id)
+                    return (
+                      <g
+                        key={c.id}
+                        className={`board-connector${selected ? ' selected' : ''}`}
+                        data-testid={`connector-${c.id}`}
+                        onPointerDown={(ev) => onPointerDownConnector(ev, c.id)}
+                      >
+                        <line
+                          x1={a.x}
+                          y1={a.y}
+                          x2={b.x}
+                          y2={b.y}
+                          stroke="transparent"
+                          strokeWidth={14}
+                          style={{ cursor: 'pointer' }}
+                        />
+                        <line
+                          x1={a.x}
+                          y1={a.y}
+                          x2={b.x}
+                          y2={b.y}
+                          stroke="currentColor"
+                          strokeWidth={selected ? 2.5 : 1.75}
+                          markerEnd="url(#tala-arrowhead)"
+                          style={{ pointerEvents: 'none' }}
+                        />
+                        {selected && (
+                          <>
+                            <circle
+                              className="board-connector-handle"
+                              cx={a.x}
+                              cy={a.y}
+                              r={6}
+                              onPointerDown={(ev) => onPointerDownHandle(ev, c.id, 'from')}
+                            />
+                            <circle
+                              className="board-connector-handle"
+                              cx={b.x}
+                              cy={b.y}
+                              r={6}
+                              onPointerDown={(ev) => onPointerDownHandle(ev, c.id, 'to')}
+                            />
+                          </>
+                        )}
+                      </g>
+                    )
+                  })}
+                </svg>
+
+                {items.map((item) => {
+                  const selected = selectedIds.includes(item.id)
+                  const isEditing = editingId === item.id
+                  const grid = item.cells
+                  const isApercu = (item.type === 'source' || item.type === 'golden') && item.view === 'apercu'
+                  const isChip = (item.type === 'source' || item.type === 'golden') && item.view !== 'apercu'
+                  const kpiCols = item.type === 'kpi' ? numericColumnNames(items.find((row) => {
+                    return connectors.some((c) => c.fromId === row.id && c.toId === item.id && row.type === 'golden')
+                  })?.cells) : []
+                  return (
+                    <div
+                      key={item.id}
+                      data-testid={`item-${item.id}`}
+                      data-item-type={item.type}
+                      className={`board-item board-${item.type}${isApercu ? ' is-apercu' : ''}${selected ? ' selected' : ''}${connectorDraft === item.id ? ' connect-source' : ''}${dropTargetId === item.id ? ' is-drop-target' : ''}${item.stale ? ' is-stale' : ''}${item.error ? ' is-error' : ''}`}
+                      style={{
+                        left: item.x,
+                        top: item.y,
+                        width: item.w,
+                        minHeight: item.h,
+                        height: isChip || item.type === 'kpi' ? item.h : undefined,
+                      }}
+                      onPointerDown={(ev) => onPointerDownItem(ev, item)}
+                      onDoubleClick={(ev) => onDoubleClickItem(ev, item)}
+                      onDragOver={(ev) => onDragOverItem(ev, item)}
+                      onDrop={(ev) => onDropItem(ev, item)}
+                    >
+                      {item.type === 'source' && !isApercu && (
+                        <div className="board-source-chip">
+                          <span className="board-source-ico" aria-hidden />
+                          <div
+                            className={`board-source-name${isEditing ? ' editing' : ''}`}
+                            contentEditable={isEditing}
+                            suppressContentEditableWarning
+                            ref={isEditing ? editRef : undefined}
+                            onBlur={isEditing ? commitEdit : undefined}
+                            onKeyDown={isEditing ? onEditKeyDown : undefined}
+                            onPointerDown={isEditing ? (ev) => ev.stopPropagation() : undefined}
+                          >
+                            {item.text}
+                          </div>
+                        </div>
+                      )}
+                      {item.type === 'golden' && !isApercu && (
+                        <div className="board-golden-chip">
+                          <span className="board-golden-ico" aria-hidden />
+                          <div
+                            className={`board-golden-name${isEditing ? ' editing' : ''}`}
+                            contentEditable={isEditing}
+                            suppressContentEditableWarning
+                            ref={isEditing ? editRef : undefined}
+                            onBlur={isEditing ? commitEdit : undefined}
+                            onKeyDown={isEditing ? onEditKeyDown : undefined}
+                            onPointerDown={isEditing ? (ev) => ev.stopPropagation() : undefined}
+                          >
+                            {goldenChipLabel(item)}
+                          </div>
+                        </div>
+                      )}
+                      {isApercu && (
+                        <div className="board-table-inner">
+                          <div className="board-table-head">
+                            <div
+                              className={`board-table-title${isEditing ? ' editing' : ''}`}
+                              contentEditable={isEditing}
+                              suppressContentEditableWarning
+                              ref={isEditing ? editRef : undefined}
+                              onBlur={isEditing ? commitEdit : undefined}
+                              onKeyDown={isEditing ? onEditKeyDown : undefined}
+                              onPointerDown={isEditing ? (ev) => ev.stopPropagation() : undefined}
+                            >
+                              {item.type === 'golden' ? goldenChipLabel(item) : item.text}
+                            </div>
+                            {item.type === 'source' && (
+                              <button
+                                type="button"
+                                className="board-choose"
+                                onPointerDown={(ev) => ev.stopPropagation()}
+                                onClick={(ev) => {
+                                  ev.stopPropagation()
+                                  void chooseCsv(item.id)
+                                }}
+                              >
+                                Choisir CSV
+                              </button>
+                            )}
+                          </div>
+                          {grid && grid.length > 0 ? (
+                            <div className="board-table-scroll">
+                              <table className="board-mini-table" data-testid={item.type === 'golden' ? 'golden-grid' : 'source-grid'}>
+                                <thead>
+                                  <tr>
+                                    {grid[0]?.map((cell, ci) => (
+                                      <th key={ci}>{cell}</th>
+                                    ))}
+                                  </tr>
+                                </thead>
+                                <tbody>
+                                  {grid.slice(1).map((row, ri) => (
+                                    <tr key={ri} data-row={row[0]}>
+                                      {row.map((cell, ci) => (
+                                        <td key={ci}>{cell}</td>
+                                      ))}
+                                    </tr>
+                                  ))}
+                                </tbody>
+                              </table>
+                            </div>
+                          ) : (
+                            <div className="board-empty-grid">Choisir CSV</div>
+                          )}
+                        </div>
+                      )}
+                      {item.error && (
+                        <div className="board-source-error" data-testid="source-error">
+                          {item.error}
+                        </div>
+                      )}
+                      {item.stale && (
+                        <button
+                          type="button"
+                          className="board-stale"
+                          data-testid="source-stale"
+                          onPointerDown={(ev) => ev.stopPropagation()}
+                          onClick={(ev) => {
+                            ev.stopPropagation()
+                            if (item.type === 'source') void reloadSource(item.id)
+                          }}
+                        >
+                          {item.type === 'source' ? 'fichier modifié' : 'obsolète'}
+                        </button>
+                      )}
+                      {item.type === 'kpi' && (
+                        <div className="board-kpi-inner">
+                          <div
+                            className={`board-kpi-title${isEditing ? ' editing' : ''}`}
+                            contentEditable={isEditing}
+                            suppressContentEditableWarning
+                            ref={isEditing ? editRef : undefined}
+                            onBlur={isEditing ? commitEdit : undefined}
+                            onKeyDown={isEditing ? onEditKeyDown : undefined}
+                            onPointerDown={isEditing ? (ev) => ev.stopPropagation() : undefined}
+                          >
+                            {item.text}
+                          </div>
+                          <div className="board-kpi-measure" data-testid="kpi-measure">
+                            {item.measure ?? '—'}
+                          </div>
+                          <div
+                            className="board-kpi-picker"
+                            data-testid="kpi-picker"
+                            onPointerDown={(ev) => ev.stopPropagation()}
+                          >
+                            <select
+                              aria-label="Agrégat"
+                              value={item.kpiAgg ?? 'mean'}
+                              onChange={(ev) => {
+                                const value = ev.target.value
+                                if (isKpiAgg(value)) setKpiPicker(item.id, { kpiAgg: value })
+                              }}
+                            >
+                              {KPI_AGGS.map((agg) => (
+                                <option key={agg} value={agg}>
+                                  {KPI_AGG_LABELS[agg]}
+                                </option>
+                              ))}
+                            </select>
+                            {item.kpiAgg === 'ratio' ? (
+                              <>
+                                <select
+                                  aria-label="Numérateur"
+                                  value={item.kpiNumerator ?? ''}
+                                  onChange={(ev) => setKpiPicker(item.id, { kpiNumerator: ev.target.value })}
+                                >
+                                  <option value="">—</option>
+                                  {kpiCols.map((col) => (
+                                    <option key={`n-${col}`} value={col}>
+                                      {col}
+                                    </option>
+                                  ))}
+                                </select>
+                                <span className="board-kpi-ratio-sep">/</span>
+                                <select
+                                  aria-label="Dénominateur"
+                                  value={item.kpiDenominator ?? ''}
+                                  onChange={(ev) => setKpiPicker(item.id, { kpiDenominator: ev.target.value })}
+                                >
+                                  <option value="">—</option>
+                                  {kpiCols.map((col) => (
+                                    <option key={`d-${col}`} value={col}>
+                                      {col}
+                                    </option>
+                                  ))}
+                                </select>
+                              </>
+                            ) : (
+                              <select
+                                aria-label="Colonne"
+                                value={item.kpiColumn ?? ''}
+                                onChange={(ev) => setKpiPicker(item.id, { kpiColumn: ev.target.value })}
+                              >
+                                <option value="">—</option>
+                                {kpiCols.map((col) => (
+                                  <option key={col} value={col}>
+                                    {col}
+                                  </option>
+                                ))}
+                              </select>
+                            )}
+                          </div>
+                          <Sparkline values={item.spark ?? [20, 28, 24, 35, 30, 42]} kind={item.chartKind ?? 'spark'} />
+                        </div>
+                      )}
+                      {item.type === 'arrow' && <div className="board-arrow-text">{item.text}</div>}
+                    </div>
                   )
                 })}
-              </svg>
 
-              {items.map((item) => {
-                const selected = selectedIds.includes(item.id)
-                const isEditing = editingId === item.id
-                const grid = item.cells ?? EMPTY_TABLE_CELLS
-                const isApercu =
-                  (item.type === 'source' || item.type === 'golden') && item.view === 'apercu'
-                const isChip =
-                  (item.type === 'source' || item.type === 'golden') && item.view !== 'apercu'
-                return (
+                {marquee && (
                   <div
-                    key={item.id}
-                    className={`board-item board-${item.type}${isApercu ? ' is-apercu' : ''}${selected ? ' selected' : ''}${connectorDraft === item.id ? ' connect-source' : ''}`}
+                    className="board-marquee"
                     style={{
-                      left: item.x,
-                      top: item.y,
-                      width: item.w,
-                      minHeight: item.h,
-                      height: isChip || item.type === 'kpi' ? item.h : undefined,
+                      left: marquee.x,
+                      top: marquee.y,
+                      width: marquee.w,
+                      height: marquee.h,
                     }}
-                    onPointerDown={(ev) => onPointerDownItem(ev, item)}
-                    onDoubleClick={(ev) => onDoubleClickItem(ev, item)}
-                  >
-                    {item.type === 'source' && !isApercu && (
-                      <div className="board-source-chip">
-                        <span className="board-source-ico" aria-hidden />
-                        <div
-                          className={`board-source-name${isEditing ? ' editing' : ''}`}
-                          contentEditable={isEditing}
-                          suppressContentEditableWarning
-                          ref={isEditing ? editRef : undefined}
-                          onBlur={isEditing ? commitEdit : undefined}
-                          onKeyDown={isEditing ? onEditKeyDown : undefined}
-                          onPointerDown={isEditing ? (ev) => ev.stopPropagation() : undefined}
-                        >
-                          {item.text}
-                        </div>
-                      </div>
-                    )}
-                    {item.type === 'golden' && !isApercu && (
-                      <div className="board-golden-chip">
-                        <span className="board-golden-ico" aria-hidden />
-                        <div
-                          className={`board-golden-name${isEditing ? ' editing' : ''}`}
-                          contentEditable={isEditing}
-                          suppressContentEditableWarning
-                          ref={isEditing ? editRef : undefined}
-                          onBlur={isEditing ? commitEdit : undefined}
-                          onKeyDown={isEditing ? onEditKeyDown : undefined}
-                          onPointerDown={isEditing ? (ev) => ev.stopPropagation() : undefined}
-                        >
-                          {goldenChipLabel(item.text)}
-                        </div>
-                      </div>
-                    )}
-                    {isApercu && (
-                      <div className="board-table-inner">
-                        <div
-                          className={`board-table-title${isEditing ? ' editing' : ''}`}
-                          contentEditable={isEditing}
-                          suppressContentEditableWarning
-                          ref={isEditing ? editRef : undefined}
-                          onBlur={isEditing ? commitEdit : undefined}
-                          onKeyDown={isEditing ? onEditKeyDown : undefined}
-                          onPointerDown={isEditing ? (ev) => ev.stopPropagation() : undefined}
-                        >
-                          {item.type === 'golden' ? goldenChipLabel(item.text) : item.text}
-                        </div>
-                        <table className="board-mini-table">
-                          <thead>
-                            <tr>
-                              {grid[0]?.map((cell, ci) => (
-                                <th key={ci}>{cell}</th>
-                              ))}
-                            </tr>
-                          </thead>
-                          <tbody>
-                            {grid.slice(1).map((row, ri) => (
-                              <tr key={ri}>
-                                {row.map((cell, ci) => (
-                                  <td key={ci}>{cell}</td>
-                                ))}
-                              </tr>
-                            ))}
-                          </tbody>
-                        </table>
-                      </div>
-                    )}
-                    {item.type === 'kpi' && (
-                      <div className="board-kpi-inner">
-                        <div
-                          className={`board-kpi-title${isEditing ? ' editing' : ''}`}
-                          contentEditable={isEditing}
-                          suppressContentEditableWarning
-                          ref={isEditing ? editRef : undefined}
-                          onBlur={isEditing ? commitEdit : undefined}
-                          onKeyDown={isEditing ? onEditKeyDown : undefined}
-                          onPointerDown={isEditing ? (ev) => ev.stopPropagation() : undefined}
-                        >
-                          {item.text}
-                        </div>
-                        <div className="board-kpi-measure">{item.measure ?? '—'}</div>
-                        <Sparkline
-                          values={item.spark ?? [20, 28, 24, 35, 30, 42]}
-                          kind={item.chartKind ?? 'spark'}
-                        />
-                      </div>
-                    )}
-                    {item.type === 'arrow' && <div className="board-arrow-text">{item.text}</div>}
-                  </div>
-                )
-              })}
-
-              {marquee && (
-                <div
-                  className="board-marquee"
-                  style={{
-                    left: marquee.x,
-                    top: marquee.y,
-                    width: marquee.w,
-                    height: marquee.h,
-                  }}
-                />
-              )}
-            </div>
+                  />
+                )}
+              </div>
             </div>
           </div>
         </section>

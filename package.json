@@ -11,7 +11,8 @@
     "build": "tsc -b && vite build",
     "build:electron": "node scripts/build-electron.mjs",
     "dist:win": "tsc -b && ELECTRON=1 vite build && npm run build:electron && CSC_IDENTITY_AUTO_DISCOVERY=false electron-builder --win zip --x64 --publish never",
-    "test:electron": "npm run build:electron && ELECTRON=1 vite build && node scripts/electron-smoke.mjs",
+    "test:csv": "node --experimental-strip-types --test scripts/csv-unit.test.ts",
+    "test:electron": "npm run test:csv && npm run build:electron && ELECTRON=1 vite build && node scripts/electron-smoke.mjs",
     "lint": "oxlint",
     "preview": "vite preview"
   },
