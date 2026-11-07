@@ -41,6 +41,8 @@ export type LeftJoinResult = {
   key: JoinKey | null
   /** Right-side rows that shared a key with at least one other row. */
   aggregatedRightRows: number
+  /** Right-side rows that had no match in the left table. */
+  orphanRightRows: number
 }
 
 function mergeNonNumeric(values: string[]): string {
@@ -118,21 +120,29 @@ export function joinAggregateLog(sourceName: string, aggregatedRightRows: number
   return `Join with ${sourceName}: ${aggregatedRightRows} ${noun}`
 }
 
+export function joinOrphanLog(sourceName: string, orphanRightRows: number): string | undefined {
+  if (orphanRightRows <= 0) return undefined
+  const noun = orphanRightRows === 1 ? 'ligne sans correspondance' : 'lignes sans correspondance'
+  return `Join with ${sourceName}: ${orphanRightRows} ${noun}`
+}
+
 /**
  * Left-join on the shared key. Right-side duplicate keys are aggregated first
  * so Golden keeps exactly one row per left row.
+ * 
+ * Blank keys NEVER join, even if both sides have blank keys.
  */
 export function leftJoin(left: string[][], right: string[][]): LeftJoinResult {
-  if (left.length === 0) return { cells: left, key: null, aggregatedRightRows: 0 }
+  if (left.length === 0) return { cells: left, key: null, aggregatedRightRows: 0, orphanRightRows: 0 }
   const leftHeaders = left[0] ?? []
   const rightHeaders = right[0] ?? []
   const key = findJoinKey(leftHeaders, rightHeaders)
-  if (!key) return { cells: left, key: null, aggregatedRightRows: 0 }
+  if (!key) return { cells: left, key: null, aggregatedRightRows: 0, orphanRightRows: 0 }
 
   const leftKeyIdx = leftHeaders.indexOf(key.leftKey)
   const rightKeyIdx = rightHeaders.indexOf(key.rightKey)
   if (leftKeyIdx < 0 || rightKeyIdx < 0) {
-    return { cells: left, key: null, aggregatedRightRows: 0 }
+    return { cells: left, key: null, aggregatedRightRows: 0, orphanRightRows: 0 }
   }
 
   const { rows: rightRows, aggregatedRightRows } = aggregateRightByKey(right, rightKeyIdx)
@@ -144,15 +154,29 @@ export function leftJoin(left: string[][], right: string[][]): LeftJoinResult {
   const rightIndex = new Map<string, string[]>()
   for (const row of rightRows.slice(1)) {
     const raw = joinKeyValue(row[rightKeyIdx] ?? '')
+    if (raw === '') continue
     if (!rightIndex.has(raw)) rightIndex.set(raw, row)
+  }
+
+  const leftKeys = new Set<string>()
+  for (const row of left.slice(1)) {
+    const raw = joinKeyValue(row[leftKeyIdx] ?? '')
+    if (raw !== '') leftKeys.add(raw)
+  }
+
+  let orphanRightRows = 0
+  for (const row of rightRows.slice(1)) {
+    const raw = joinKeyValue(row[rightKeyIdx] ?? '')
+    if (!leftKeys.has(raw)) orphanRightRows++
   }
 
   const out: string[][] = [outHeaders]
   for (const row of left.slice(1)) {
-    const match = rightIndex.get(joinKeyValue(row[leftKeyIdx] ?? ''))
+    const keyVal = joinKeyValue(row[leftKeyIdx] ?? '')
+    const match = keyVal === '' ? undefined : rightIndex.get(keyVal)
     const extra = rightExtra.map((col) => match?.[col.index] ?? '')
     const padded = leftHeaders.map((_, i) => row[i] ?? '')
     out.push([...padded, ...extra])
   }
-  return { cells: out, key, aggregatedRightRows }
+  return { cells: out, key, aggregatedRightRows, orphanRightRows }
 }

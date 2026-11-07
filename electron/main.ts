@@ -3,6 +3,7 @@ import fs from 'node:fs'
 import path from 'node:path'
 import { IPC } from './ipc.ts'
 import { assertAbsolutePath } from './paths.ts'
+import { requestAiProposal, type AiHarnessRequest, type AiHarnessResponse } from './groq-client.ts'
 
 if (process.env.CUT_KNOT_NO_SANDBOX === '1') {
   app.commandLine.appendSwitch('no-sandbox')
@@ -116,6 +117,29 @@ function registerBridge() {
 
   ipcMain.handle(IPC.unwatchFile, async (_event, watchId: unknown) => {
     if (typeof watchId === 'string') stopWatch(watchId)
+  })
+
+  ipcMain.handle(IPC.aiRun, async (_event, request: unknown): Promise<AiHarnessResponse> => {
+    if (!request || typeof request !== 'object') {
+      throw new Error('AI request must be an object')
+    }
+    const { userMessage, availableColumns, context } = request as {
+      userMessage: unknown
+      availableColumns: unknown
+      context?: unknown
+    }
+    if (typeof userMessage !== 'string') {
+      throw new Error('userMessage must be a string')
+    }
+    if (!Array.isArray(availableColumns) || !availableColumns.every((c) => typeof c === 'string')) {
+      throw new Error('availableColumns must be an array of strings')
+    }
+    const aiRequest: AiHarnessRequest = {
+      userMessage,
+      availableColumns,
+      context: typeof context === 'string' ? context : undefined,
+    }
+    return requestAiProposal(aiRequest)
   })
 }
 

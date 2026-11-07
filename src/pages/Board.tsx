@@ -196,9 +196,21 @@ export default function Board() {
   const logNewJoinNotes = useCallback(
     (prev: BoardItem[], next: BoardItem[]) => {
       for (const item of next) {
-        if (item.type !== 'golden' || !item.joinNote) continue
-        const before = prev.find((row) => row.id === item.id)
-        if (before?.joinNote !== item.joinNote) pushLog(item.joinNote)
+        if (item.type === 'golden') {
+          const before = prev.find((row) => row.id === item.id)
+          if (item.joinNote && before?.joinNote !== item.joinNote) {
+            pushLog(item.joinNote)
+          }
+          if (item.orphanWarning && before?.orphanWarning !== item.orphanWarning) {
+            pushLog(item.orphanWarning)
+          }
+        }
+        if (item.type === 'kpi') {
+          const before = prev.find((row) => row.id === item.id)
+          if (item.kpiSkippedWarning && before?.kpiSkippedWarning !== item.kpiSkippedWarning) {
+            pushLog(item.kpiSkippedWarning)
+          }
+        }
       }
     },
     [pushLog],

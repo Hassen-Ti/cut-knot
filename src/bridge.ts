@@ -11,6 +11,18 @@ export type OpenFileOptions = {
   filters?: OpenFileFilter[]
 }
 
+export type AiHarnessRequest = {
+  userMessage: string
+  availableColumns: string[]
+  context?: string
+}
+
+export type AiHarnessResponse = {
+  proposal: unknown
+  raw?: unknown
+  deterministic: boolean
+}
+
 export type CutKnotBridge = {
   /** Native file picker. CSV is the default filter. Returns an absolute path or null. */
   openFile: (options?: OpenFileOptions) => Promise<string | null>
@@ -25,4 +37,8 @@ export type CutKnotBridge = {
     filePath: string,
     onEvent: (event: FileWatchEvent) => void,
   ) => () => void
+  /** AI harness: propose typed actions validated by deterministic engine. */
+  ai: {
+    run: (request: AiHarnessRequest) => Promise<AiHarnessResponse>
+  }
 }

@@ -23,11 +23,15 @@ export type BoardItem = {
   joinStatus?: JoinStatus
   /** Visible What I've done line when the last join aggregated right-side duplicates. */
   joinNote?: string
+  /** Visible warning when right rows had no left match. */
+  orphanWarning?: string
   kpiAgg?: KpiAgg
   kpiColumn?: string
   kpiNumerator?: string
   kpiDenominator?: string
   kpiReady?: boolean
+  /** Warning when cells were skipped during aggregation. */
+  kpiSkippedWarning?: string
 }
 
 export type Connector = {

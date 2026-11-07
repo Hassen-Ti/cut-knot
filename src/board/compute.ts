@@ -1,5 +1,5 @@
-import { joinAggregateLog, leftJoin } from '../csv/join.ts'
-import { defaultKpiSpec, measureFromGolden, type KpiSpec } from '../csv/kpi.ts'
+import { joinAggregateLog, joinOrphanLog, leftJoin } from '../csv/join.ts'
+import { computeKpi, defaultKpiSpec, formatMeasure, kpiSkippedWarning, type KpiSpec } from '../csv/kpi.ts'
 import {
   goldenChipLabel,
   goldenDims,
@@ -88,6 +88,7 @@ export function recomputeBoard(items: BoardItem[], connectors: Connector[]): Boa
         cells: undefined,
         joinStatus: undefined,
         joinNote: undefined,
+        orphanWarning: undefined,
         stale: Boolean(item.cells) || Boolean(item.stale),
         w: dims.w,
         h: dims.h,
@@ -103,6 +104,22 @@ export function recomputeBoard(items: BoardItem[], connectors: Connector[]): Boa
         cells: source.cells,
         joinStatus: undefined,
         joinNote: undefined,
+        orphanWarning: undefined,
+        stale: watchedStale,
+        w: dims.w,
+        h: dims.h,
+      }
+    }
+
+    if (inbound.length > 2) {
+      const dims =
+        item.view === 'apercu' ? goldenDims('apercu', item.text) : goldenDims('chip', item.text)
+      return {
+        ...item,
+        cells: undefined,
+        joinStatus: undefined,
+        joinNote: undefined,
+        orphanWarning: `Impossible de joindre plus de 2 Sources (${inbound.length} connectées)`,
         stale: watchedStale,
         w: dims.w,
         h: dims.h,
@@ -111,7 +128,7 @@ export function recomputeBoard(items: BoardItem[], connectors: Connector[]): Boa
 
     const left = inbound[0]!
     const right = inbound[1]!
-    const { cells, key, aggregatedRightRows } = leftJoin(left.cells ?? [], right.cells ?? [])
+    const { cells, key, aggregatedRightRows, orphanRightRows } = leftJoin(left.cells ?? [], right.cells ?? [])
     const joinStatus = key ? undefined : ('no-key' as const)
     const label = joinStatus === 'no-key' ? 'no join key' : item.text
     const dims = item.view === 'apercu' ? goldenDims('apercu', item.text) : goldenDims('chip', label)
@@ -120,6 +137,7 @@ export function recomputeBoard(items: BoardItem[], connectors: Connector[]): Boa
       cells,
       joinStatus,
       joinNote: joinAggregateLog(right.text, aggregatedRightRows),
+      orphanWarning: joinOrphanLog(right.text, orphanRightRows),
       stale: watchedStale,
       w: dims.w,
       h: dims.h,
@@ -132,16 +150,19 @@ export function recomputeBoard(items: BoardItem[], connectors: Connector[]): Boa
     const cells = golden?.cells
     const spec = kpiSpecOf(item, cells)
     if (!spec) {
-      return { ...item, measure: '—', kpiReady: item.kpiReady }
+      return { ...item, measure: '—', kpiReady: item.kpiReady, kpiSkippedWarning: undefined }
     }
+    const result = computeKpi(cells, spec)
+    const columnName = spec.agg === 'ratio' ? spec.numerator : spec.column
     return {
       ...item,
-      measure: measureFromGolden(cells, spec),
+      measure: formatMeasure(result.value, spec.agg),
       kpiAgg: spec.agg,
       kpiColumn: spec.column ?? item.kpiColumn,
       kpiNumerator: spec.numerator ?? item.kpiNumerator,
       kpiDenominator: spec.denominator ?? item.kpiDenominator,
       kpiReady: true,
+      kpiSkippedWarning: kpiSkippedWarning(result.skippedCells, columnName),
     }
   })
 }
