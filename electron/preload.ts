@@ -7,6 +7,18 @@ type OpenFileOptions = {
   filters?: { name: string; extensions: string[] }[]
 }
 
+type AiHarnessRequest = {
+  userMessage: string
+  availableColumns: string[]
+  context?: string
+}
+
+type AiHarnessResponse = {
+  proposal: unknown
+  raw?: unknown
+  deterministic: boolean
+}
+
 const cutknot = {
   openFile: (options?: OpenFileOptions): Promise<string | null> => {
     return ipcRenderer.invoke(IPC.openFile, options) as Promise<string | null>
@@ -37,6 +49,12 @@ const cutknot = {
       void ipcRenderer.invoke(IPC.unwatchFile, watchId)
       ipcRenderer.removeListener(IPC.fileChanged, handler)
     }
+  },
+
+  ai: {
+    run: (request: AiHarnessRequest): Promise<AiHarnessResponse> => {
+      return ipcRenderer.invoke(IPC.aiRun, request) as Promise<AiHarnessResponse>
+    },
   },
 }
 

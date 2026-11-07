@@ -40,6 +40,8 @@ import {
 } from '../board/model.ts'
 import { Footer, Shell3, WhatIveDone, type ToolName } from '../components/Shell'
 import { KPI_AGG_LABELS, KPI_AGGS, isKpiAgg, numericColumnNames, parseCsv } from '../csv/index.ts'
+import { AiProposal } from '../components/AiProposal'
+import type { AiAction } from '../ai/actions'
 
 const defaultTimeline = [
   { t: '14:02', a: 'Start draft', state: 'done' as const },
@@ -159,6 +161,7 @@ export default function Board() {
   const [spaceDown, setSpaceDown] = useState(false)
   const [zoom, setZoom] = useState(1)
   const [dropTargetId, setDropTargetId] = useState<string | 'canvas' | null>(null)
+  const [aiProposal, setAiProposal] = useState<{ response: any; availableColumns: string[] } | null>(null)
 
   const dragRef = useRef<{
     mode: 'move' | 'marquee' | 'pan' | 'retarget'
@@ -196,9 +199,21 @@ export default function Board() {
   const logNewJoinNotes = useCallback(
     (prev: BoardItem[], next: BoardItem[]) => {
       for (const item of next) {
-        if (item.type !== 'golden' || !item.joinNote) continue
-        const before = prev.find((row) => row.id === item.id)
-        if (before?.joinNote !== item.joinNote) pushLog(item.joinNote)
+        if (item.type === 'golden') {
+          const before = prev.find((row) => row.id === item.id)
+          if (item.joinNote && before?.joinNote !== item.joinNote) {
+            pushLog(item.joinNote)
+          }
+          if (item.orphanWarning && before?.orphanWarning !== item.orphanWarning) {
+            pushLog(item.orphanWarning)
+          }
+        }
+        if (item.type === 'kpi') {
+          const before = prev.find((row) => row.id === item.id)
+          if (item.kpiSkippedWarning && before?.kpiSkippedWarning !== item.kpiSkippedWarning) {
+            pushLog(item.kpiSkippedWarning)
+          }
+        }
       }
     },
     [pushLog],
@@ -358,6 +373,45 @@ export default function Board() {
     setEditingId(null)
     pushLog(`Edited “${text.slice(0, 28)}”`)
   }, [editingId, pushLog])
+
+  const handleAiQuery = useCallback(async (query: string) => {
+    const api = window.cutknot?.ai
+    if (!api) {
+      pushLog('AI non disponible (mode web)')
+      return
+    }
+
+    const sources = items.filter((it) => it.type === 'source' && it.cells && it.cells.length > 0)
+    if (sources.length === 0) {
+      pushLog('Aucune Source avec données')
+      return
+    }
+
+    const firstSource = sources[0]!
+    const headers = firstSource.cells?.[0] ?? []
+    
+    try {
+      pushLog(`Demande AI: ${query}`)
+      const response = await api.run({
+        userMessage: query,
+        availableColumns: headers,
+        context: `Source: ${firstSource.text}`,
+      })
+      setAiProposal({ response, availableColumns: headers })
+    } catch (error) {
+      pushLog(`Erreur AI: ${String(error)}`)
+    }
+  }, [items, pushLog])
+
+  const handleAiAccept = useCallback((action: AiAction) => {
+    pushLog(`Action AI acceptée: ${action.type}`)
+    setAiProposal(null)
+  }, [pushLog])
+
+  const handleAiRefuse = useCallback(() => {
+    pushLog('Proposition AI refusée')
+    setAiProposal(null)
+  }, [pushLog])
 
   const applyZoomAt = useCallback((next: number, clientX?: number, clientY?: number) => {
     const canvas = canvasRef.current
@@ -1277,14 +1331,25 @@ export default function Board() {
       }
       wid={<WhatIveDone scope={scopeLabel} day="Lun 13" items={widItems} />}
       footer={
-        <Footer
-          placeholder="Propose une analyse…"
-          action={
-            <Link className="btn primary" to="/kpi">
-              Vers KPI
-            </Link>
-          }
-        />
+        <>
+          <Footer
+            placeholder="Propose une analyse…"
+            onSubmit={handleAiQuery}
+            action={
+              <Link className="btn primary" to="/kpi">
+                Vers KPI
+              </Link>
+            }
+          />
+          {aiProposal && (
+            <AiProposal
+              response={aiProposal.response}
+              availableColumns={aiProposal.availableColumns}
+              onAccept={handleAiAccept}
+              onRefuse={handleAiRefuse}
+            />
+          )}
+        </>
       }
     />
   )
