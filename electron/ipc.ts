@@ -4,4 +4,5 @@ export const IPC = {
   watchFile: 'cutknot:watchFile',
   unwatchFile: 'cutknot:unwatchFile',
   fileChanged: 'cutknot:fileChanged',
+  aiRun: 'cutknot:aiRun',
 } as const
