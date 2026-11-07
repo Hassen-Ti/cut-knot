@@ -185,19 +185,39 @@ export function Footer({
   placeholder,
   action,
   label = 'Demande',
+  onSubmit,
 }: {
   placeholder: string
   action?: ReactNode
   label?: string
+  onSubmit?: (value: string) => void
 }) {
   const fieldId = useId()
+  const [value, setValue] = useState('')
+
+  const handleSubmit = (ev: React.FormEvent) => {
+    ev.preventDefault()
+    if (value.trim() && onSubmit) {
+      onSubmit(value.trim())
+      setValue('')
+    }
+  }
+
   return (
     <footer className="footer">
-      <label className="footer-label" htmlFor={fieldId}>
-        {label}
-      </label>
-      <input id={fieldId} type="text" placeholder={placeholder} />
-      {action}
+      <form onSubmit={handleSubmit} style={{ display: 'contents' }}>
+        <label className="footer-label" htmlFor={fieldId}>
+          {label}
+        </label>
+        <input
+          id={fieldId}
+          type="text"
+          placeholder={placeholder}
+          value={value}
+          onChange={(ev) => setValue(ev.target.value)}
+        />
+        {action}
+      </form>
     </footer>
   )
 }
