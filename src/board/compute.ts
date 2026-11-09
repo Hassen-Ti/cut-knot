@@ -153,7 +153,6 @@ export function recomputeBoard(items: BoardItem[], connectors: Connector[]): Boa
       return { ...item, measure: '—', kpiReady: item.kpiReady, kpiSkippedWarning: undefined }
     }
     const result = computeKpi(cells, spec)
-    const columnName = spec.agg === 'ratio' ? spec.numerator : spec.column
     return {
       ...item,
       measure: formatMeasure(result.value, spec.agg),
@@ -162,7 +161,7 @@ export function recomputeBoard(items: BoardItem[], connectors: Connector[]): Boa
       kpiNumerator: spec.numerator ?? item.kpiNumerator,
       kpiDenominator: spec.denominator ?? item.kpiDenominator,
       kpiReady: true,
-      kpiSkippedWarning: kpiSkippedWarning(result.skippedCells, columnName),
+      kpiSkippedWarning: kpiSkippedWarning(result, spec),
     }
   })
 }

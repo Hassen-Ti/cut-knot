@@ -165,7 +165,7 @@ export function leftJoin(left: string[][], right: string[][]): LeftJoinResult {
   }
 
   let orphanRightRows = 0
-  for (const row of rightRows.slice(1)) {
+  for (const row of right.slice(1)) {
     const raw = joinKeyValue(row[rightKeyIdx] ?? '')
     if (!leftKeys.has(raw)) orphanRightRows++
   }

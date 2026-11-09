@@ -10,6 +10,7 @@ import {
   decodeCsvBytes,
   formatMeasure,
   joinAggregateLog,
+  joinOrphanLog,
   leftJoin,
   parseCsv,
   parseNumber,
@@ -128,6 +129,32 @@ describe('numbers and KPI', () => {
     assert.equal(sum.value, 30)
     assert.equal(sum.skippedCells, 2)
   })
+
+  it('attributes skipped cells to correct column in ratio (bad Km)', () => {
+    const cells = [
+      ['Montant', 'Km'],
+      ['100', '10'],
+      ['200', 'N/A'],
+      ['300', '30'],
+    ]
+    const result = computeKpi(cells, { agg: 'ratio', numerator: 'Montant', denominator: 'Km' })
+    assert.equal(result.value, 15)
+    assert.equal(result.skippedCells, 1)
+    assert.deepEqual(result.skippedByColumn, { Km: 1 })
+  })
+
+  it('attributes skipped cells to both columns when both have bad data', () => {
+    const cells = [
+      ['Montant', 'Km'],
+      ['100', '10'],
+      ['BAD', '20'],
+      ['300', 'ERROR'],
+    ]
+    const result = computeKpi(cells, { agg: 'ratio', numerator: 'Montant', denominator: 'Km' })
+    assert.equal(result.value, 40)
+    assert.equal(result.skippedCells, 2)
+    assert.deepEqual(result.skippedByColumn, { Montant: 1, Km: 1 })
+  })
 })
 
 describe('join key', () => {
@@ -230,6 +257,33 @@ describe('join key', () => {
     assert.equal(joined.cells[1]?.[2], '')
     assert.equal(joined.cells[2]?.[2], '25')
     assert.equal(joined.orphanRightRows, 1)
+  })
+
+  it('counts repeated orphan keys against original rows (TRN099 x3)', () => {
+    const tournees = load('tournees.csv')
+    const orphanX3 = load('couts-orphan-x3.csv')
+    const joined = leftJoin(tournees, orphanX3)
+    assert.equal(joined.cells.length, 6)
+    assert.equal(joined.orphanRightRows, 3)
+    const log = joinOrphanLog('couts-orphan-x3.csv', joined.orphanRightRows)
+    assert.equal(log, 'Join with couts-orphan-x3.csv: 3 lignes sans correspondance')
+  })
+
+  it('counts blank keys as orphans when left has no blanks', () => {
+    const left = [
+      ['ID', 'Name'],
+      ['A', 'Alice'],
+      ['B', 'Bob'],
+    ]
+    const right = [
+      ['ID', 'Age'],
+      ['', '30'],
+      ['', '25'],
+      ['C', '40'],
+    ]
+    const joined = leftJoin(left, right)
+    assert.equal(joined.cells.length, 3)
+    assert.equal(joined.orphanRightRows, 3)
   })
 })
 

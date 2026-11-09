@@ -42,6 +42,7 @@ import { Footer, Shell3, WhatIveDone, type ToolName } from '../components/Shell'
 import { KPI_AGG_LABELS, KPI_AGGS, isKpiAgg, numericColumnNames, parseCsv } from '../csv/index.ts'
 import { AiProposal } from '../components/AiProposal'
 import type { AiAction } from '../ai/actions'
+import { executeAction } from '../ai/engine'
 
 const defaultTimeline = [
   { t: '14:02', a: 'Start draft', state: 'done' as const },
@@ -404,9 +405,31 @@ export default function Board() {
   }, [items, pushLog])
 
   const handleAiAccept = useCallback((action: AiAction) => {
-    pushLog(`Action AI acceptée: ${action.type}`)
+    const sources = items.filter((it) => it.type === 'source' && it.cells && it.cells.length > 0)
+    if (sources.length === 0) {
+      pushLog('Aucune Source à transformer')
+      setAiProposal(null)
+      return
+    }
+
+    const firstSource = sources[0]!
+    const beforeRows = (firstSource.cells?.length ?? 1) - 1
+    const result = executeAction(firstSource.cells ?? [], action)
+    
+    const updatedItems = items.map((item) => {
+      if (item.id === firstSource.id) {
+        return {
+          ...item,
+          cells: result.cells,
+        }
+      }
+      return item
+    })
+    
+    applyItems(updatedItems)
+    pushLog(`${result.log} (avant: ${beforeRows} lignes, après: ${result.cells.length - 1} lignes)`)
     setAiProposal(null)
-  }, [pushLog])
+  }, [items, pushLog, applyItems])
 
   const handleAiRefuse = useCallback(() => {
     pushLog('Proposition AI refusée')

@@ -31,6 +31,7 @@ export function defaultKpiSpec(cells: string[][] | undefined): KpiSpec | null {
 export type KpiResult = {
   value: number | null
   skippedCells: number
+  skippedByColumn?: Record<string, number>
 }
 
 /**
@@ -102,26 +103,31 @@ export function computeKpi(cells: string[][] | undefined, spec: KpiSpec): KpiRes
       let sumA = 0
       let sumB = 0
       let any = false
-      let skippedCells = 0
+      let skippedA = 0
+      let skippedB = 0
       for (const row of cells.slice(1)) {
         const rawA = row[idxA] ?? ''
         if (rawA.trim() === '') continue
         const a = parseNumber(rawA)
         if (a === null) {
-          skippedCells++
+          skippedA++
           continue
         }
         const rawB = row[idxB] ?? ''
         const b = rawB.trim() === '' ? null : parseNumber(rawB)
         if (b === null && rawB.trim() !== '') {
-          skippedCells++
+          skippedB++
         }
         sumA += a
         if (b !== null) sumB += b
         any = true
       }
-      if (!any || sumB === 0) return { value: null, skippedCells }
-      return { value: sumA / sumB, skippedCells }
+      const skippedCells = skippedA + skippedB
+      const skippedByColumn: Record<string, number> = {}
+      if (skippedA > 0 && spec.numerator) skippedByColumn[spec.numerator] = skippedA
+      if (skippedB > 0 && spec.denominator) skippedByColumn[spec.denominator] = skippedB
+      if (!any || sumB === 0) return { value: null, skippedCells, skippedByColumn }
+      return { value: sumA / sumB, skippedCells, skippedByColumn }
     }
     default: {
       const _exhaustive: never = spec.agg
@@ -158,11 +164,25 @@ export function measureFromGolden(cells: string[][] | undefined, spec: KpiSpec |
   return formatMeasure(computeKpi(cells, spec).value, spec.agg)
 }
 
-export function kpiSkippedWarning(skippedCells: number, columnName: string | undefined): string | undefined {
-  if (skippedCells <= 0) return undefined
-  const noun = skippedCells === 1 ? 'valeur non numérique ignorée' : 'valeurs non numériques ignorées'
+export function kpiSkippedWarning(
+  result: KpiResult,
+  spec: KpiSpec | null,
+): string | undefined {
+  if (result.skippedCells <= 0) return undefined
+  
+  if (result.skippedByColumn && Object.keys(result.skippedByColumn).length > 0) {
+    const parts: string[] = []
+    for (const [col, count] of Object.entries(result.skippedByColumn)) {
+      const noun = count === 1 ? 'valeur non numérique ignorée' : 'valeurs non numériques ignorées'
+      parts.push(`${count} ${noun} (${col})`)
+    }
+    return parts.join(', ')
+  }
+  
+  const noun = result.skippedCells === 1 ? 'valeur non numérique ignorée' : 'valeurs non numériques ignorées'
+  const columnName = spec?.agg === 'ratio' ? spec.numerator : spec?.column
   const col = columnName ? ` (${columnName})` : ''
-  return `${skippedCells} ${noun}${col}`
+  return `${result.skippedCells} ${noun}${col}`
 }
 
 export function isKpiAgg(value: string): value is KpiAgg {
