@@ -352,12 +352,116 @@ async function runBoardImport(win: BrowserWindow) {
   }
 }
 
+async function runAiAcceptHarness(win: BrowserWindow) {
+  const tournees = process.env.CUT_KNOT_FIXTURE_TOURNEES
+  if (!tournees) return
+
+  await win.webContents.executeJavaScript(`window.location.hash = '#/board'`)
+  await waitForSelector(win, '.board-canvas')
+  await waitForBoardApi(win)
+
+  const result = (await win.webContents.executeJavaScript(`
+    (async () => {
+      const api = window.__cutknotBoard
+      if (!api) throw new Error('board hook missing')
+      const s1 = api.createSource(16, 16)
+      const g1 = api.createGolden(16, 130)
+      const k1 = api.createKpi(16, 320)
+      await api.loadFromPath(s1, ${JSON.stringify(tournees)})
+      api.setView(s1, 'chip')
+      api.connect(s1, g1)
+      api.connect(g1, k1)
+      api.setKpiPicker(k1, { agg: 'sum', column: 'Km', title: 'Somme Km' })
+      api.setView(g1, 'apercu')
+
+      const before = api.getState()
+      const beforeKpi = before.items.find((i) => i.id === k1)?.measure ?? ''
+      const beforeRows = Math.max(0, (before.items.find((i) => i.id === s1)?.cells?.length ?? 1) - 1)
+
+      const accepted = api.acceptSimulatedProposal(s1, {
+        type: 'filter',
+        column: 'Km',
+        operator: '>',
+        value: 100,
+      })
+
+      const after = api.getState()
+      const afterKpi = after.items.find((i) => i.id === k1)?.measure ?? ''
+      const afterRows = Math.max(0, (after.items.find((i) => i.id === s1)?.cells?.length ?? 1) - 1)
+      const logs = [...document.querySelectorAll('.wid-list .a')].map((el) => el.textContent ?? '')
+      return {
+        beforeRows,
+        afterRows,
+        beforeKpi,
+        afterKpi,
+        accepted,
+        logged: logs.some((line) => line.includes('Filtered Km > 100')),
+      }
+    })()
+  `)) as {
+    beforeRows: number
+    afterRows: number
+    beforeKpi: string
+    afterKpi: string
+    accepted: { beforeRows: number; afterRows: number; log: string }
+    logged: boolean
+  }
+
+  if (result.beforeRows !== 5) {
+    throw new Error(`AI harness expected 5 rows before filter, got ${result.beforeRows}`)
+  }
+  if (result.afterRows !== 3) {
+    throw new Error(`AI harness expected 3 rows after Km>100, got ${result.afterRows}`)
+  }
+  if (result.beforeKpi === result.afterKpi) {
+    throw new Error(`AI accept should change KPI measure: ${result.beforeKpi}`)
+  }
+  if (!String(result.accepted.log).includes('Filtered Km > 100')) {
+    throw new Error(`AI accept missing engine log: ${JSON.stringify(result.accepted)}`)
+  }
+
+  // Wait for What I've done React flush
+  const started = Date.now()
+  let logged = result.logged
+  while (!logged && Date.now() - started < 3000) {
+    await sleep(100)
+    logged = Boolean(
+      await win.webContents.executeJavaScript(`
+        [...document.querySelectorAll('.wid-list .a')].some((el) =>
+          (el.textContent ?? '').includes('Filtered Km > 100'),
+        )
+      `),
+    )
+  }
+  if (!logged) {
+    throw new Error("AI accept missing What I've done log")
+  }
+
+  await shot(win, 'step-ai-accept-filter.png')
+
+  const smokeOut = process.env.CUT_KNOT_SMOKE_OUT
+  if (smokeOut) {
+    let previous: Record<string, unknown> = {}
+    try {
+      previous = JSON.parse(await fs.promises.readFile(smokeOut, 'utf8')) as Record<string, unknown>
+    } catch {
+      previous = {}
+    }
+    await fs.promises.writeFile(
+      smokeOut,
+      `${JSON.stringify({ ...previous, aiAccept: { ...result, ok: true } }, null, 2)}\n`,
+      'utf8',
+    )
+  }
+}
+
 export async function runDesktopHarness(win: BrowserWindow) {
   try {
     await waitForSelector(win, '.header')
     if (process.env.CUT_KNOT_SMOKE === '1') {
       await runSmoke(win)
       await runBoardImport(win)
+      await runAiAcceptHarness(win)
     }
     if (process.env.CUT_KNOT_SCREENSHOT || process.env.CUT_KNOT_SCREENSHOT_FORGE) {
       await takeScreenshots(win)

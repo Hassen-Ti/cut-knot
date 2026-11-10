@@ -1,3 +1,4 @@
+import type { AiAction } from './ai/actions'
 import type { CutKnotBridge } from './bridge'
 import type { BoardItem, Connector, SourceView } from './board/model'
 import type { KpiAgg } from './csv/kpi'
@@ -16,6 +17,12 @@ export type CutKnotBoardTestApi = {
     spec: { agg: KpiAgg; column?: string; numerator?: string; denominator?: string; title?: string },
   ) => void
   setView: (id: string, view: SourceView) => void
+  /** Simulated AI accept for harness (deterministic fixture, no live Groq). */
+  acceptSimulatedProposal: (
+    sourceId: string,
+    action: AiAction,
+  ) => { beforeRows: number; afterRows: number; log: string; measure?: string }
+  refuseSimulatedProposal: () => void
 }
 
 declare global {

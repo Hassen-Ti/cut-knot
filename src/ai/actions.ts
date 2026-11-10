@@ -4,6 +4,7 @@ export const AI_ACTION_TYPES = [
   'clean_column',
   'drop_column',
   'deduplicate',
+  'join',
   'filter',
   'sort',
   'sum',
@@ -27,6 +28,12 @@ export type DropColumnAction = {
 export type DeduplicateAction = {
   type: 'deduplicate'
   keyColumns: string[]
+}
+
+export type JoinAction = {
+  type: 'join'
+  /** Right-side source name (for logs). Left is the targeted Source. */
+  rightSourceName?: string
 }
 
 export type FilterAction = {
@@ -73,6 +80,7 @@ export type AiAction =
   | CleanColumnAction
   | DropColumnAction
   | DeduplicateAction
+  | JoinAction
   | FilterAction
   | SortAction
   | SumAction
@@ -84,18 +92,6 @@ export type AiProposal = {
   action: AiAction
   reason: string
   affectedRows?: number
-}
-
-export type AiProposalResponse = {
-  accepted: boolean
-  proposalId: string
-}
-
-export type AiProposalResult = {
-  proposalId: string
-  success: boolean
-  affectedRows: number
-  error?: string
 }
 
 export function isAiActionType(value: unknown): value is AiActionType {
@@ -118,9 +114,7 @@ export function validateAiAction(action: unknown, availableColumns: string[]): s
     case 'clean_column':
     case 'drop_column': {
       const { column } = action as { column: unknown }
-      if (typeof column !== 'string') {
-        return 'column must be a string'
-      }
+      if (typeof column !== 'string') return 'column must be a string'
       if (!columnSet.has(column)) {
         return `Unknown column: ${column}. Available: ${availableColumns.join(', ')}`
       }
@@ -129,13 +123,9 @@ export function validateAiAction(action: unknown, availableColumns: string[]): s
 
     case 'deduplicate': {
       const { keyColumns } = action as { keyColumns: unknown }
-      if (!Array.isArray(keyColumns)) {
-        return 'keyColumns must be an array'
-      }
+      if (!Array.isArray(keyColumns)) return 'keyColumns must be an array'
       for (const col of keyColumns) {
-        if (typeof col !== 'string') {
-          return 'All keyColumns must be strings'
-        }
+        if (typeof col !== 'string') return 'All keyColumns must be strings'
         if (!columnSet.has(col)) {
           return `Unknown column: ${col}. Available: ${availableColumns.join(', ')}`
         }
@@ -143,12 +133,13 @@ export function validateAiAction(action: unknown, availableColumns: string[]): s
       return null
     }
 
+    case 'join':
+      return null
+
     case 'filter':
     case 'sort': {
       const { column } = action as { column: unknown }
-      if (typeof column !== 'string') {
-        return 'column must be a string'
-      }
+      if (typeof column !== 'string') return 'column must be a string'
       if (!columnSet.has(column)) {
         return `Unknown column: ${column}. Available: ${availableColumns.join(', ')}`
       }
@@ -157,15 +148,11 @@ export function validateAiAction(action: unknown, availableColumns: string[]): s
 
     case 'sum': {
       const { column, groupBy } = action as { column: unknown; groupBy?: unknown }
-      if (typeof column !== 'string') {
-        return 'column must be a string'
-      }
+      if (typeof column !== 'string') return 'column must be a string'
       if (!columnSet.has(column)) {
         return `Unknown column: ${column}. Available: ${availableColumns.join(', ')}`
       }
-      if (groupBy !== undefined && typeof groupBy !== 'string') {
-        return 'groupBy must be a string'
-      }
+      if (groupBy !== undefined && typeof groupBy !== 'string') return 'groupBy must be a string'
       if (groupBy && !columnSet.has(groupBy)) {
         return `Unknown groupBy column: ${groupBy}. Available: ${availableColumns.join(', ')}`
       }
@@ -177,19 +164,13 @@ export function validateAiAction(action: unknown, availableColumns: string[]): s
         condition: unknown
         targetColumn: unknown
       }
-      if (!condition || typeof condition !== 'object') {
-        return 'condition must be an object'
-      }
+      if (!condition || typeof condition !== 'object') return 'condition must be an object'
       const { column } = condition as { column: unknown }
-      if (typeof column !== 'string') {
-        return 'condition.column must be a string'
-      }
+      if (typeof column !== 'string') return 'condition.column must be a string'
       if (!columnSet.has(column)) {
         return `Unknown column: ${column}. Available: ${availableColumns.join(', ')}`
       }
-      if (typeof targetColumn !== 'string') {
-        return 'targetColumn must be a string'
-      }
+      if (typeof targetColumn !== 'string') return 'targetColumn must be a string'
       return null
     }
 
@@ -214,9 +195,7 @@ export function validateAiAction(action: unknown, availableColumns: string[]): s
           return `Unknown denominator column: ${denominator}. Available: ${availableColumns.join(', ')}`
         }
       } else {
-        if (typeof column !== 'string') {
-          return `${agg} requires a column`
-        }
+        if (typeof column !== 'string') return `${agg} requires a column`
         if (!columnSet.has(column)) {
           return `Unknown column: ${column}. Available: ${availableColumns.join(', ')}`
         }
