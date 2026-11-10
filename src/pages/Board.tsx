@@ -40,6 +40,9 @@ import {
 } from '../board/model.ts'
 import { Footer, Shell3, WhatIveDone, type ToolName } from '../components/Shell'
 import { KPI_AGG_LABELS, KPI_AGGS, isKpiAgg, numericColumnNames, parseCsv } from '../csv/index.ts'
+import { AiProposal } from '../components/AiProposal'
+import type { AiAction } from '../ai/actions'
+import { executeAction } from '../ai/engine'
 
 const defaultTimeline = [
   { t: '14:02', a: 'Start draft', state: 'done' as const },
@@ -159,6 +162,11 @@ export default function Board() {
   const [spaceDown, setSpaceDown] = useState(false)
   const [zoom, setZoom] = useState(1)
   const [dropTargetId, setDropTargetId] = useState<string | 'canvas' | null>(null)
+  const [aiProposal, setAiProposal] = useState<{
+    response: { proposal: unknown; deterministic: boolean }
+    availableColumns: string[]
+    targetSourceId: string
+  } | null>(null)
 
   const dragRef = useRef<{
     mode: 'move' | 'marquee' | 'pan' | 'retarget'
@@ -196,9 +204,21 @@ export default function Board() {
   const logNewJoinNotes = useCallback(
     (prev: BoardItem[], next: BoardItem[]) => {
       for (const item of next) {
-        if (item.type !== 'golden' || !item.joinNote) continue
-        const before = prev.find((row) => row.id === item.id)
-        if (before?.joinNote !== item.joinNote) pushLog(item.joinNote)
+        if (item.type === 'golden') {
+          const before = prev.find((row) => row.id === item.id)
+          if (item.joinNote && before?.joinNote !== item.joinNote) {
+            pushLog(item.joinNote)
+          }
+          if (item.orphanWarning && before?.orphanWarning !== item.orphanWarning) {
+            pushLog(item.orphanWarning)
+          }
+        }
+        if (item.type === 'kpi') {
+          const before = prev.find((row) => row.id === item.id)
+          if (item.kpiSkippedWarning && before?.kpiSkippedWarning !== item.kpiSkippedWarning) {
+            pushLog(item.kpiSkippedWarning)
+          }
+        }
       }
     },
     [pushLog],
@@ -358,6 +378,142 @@ export default function Board() {
     setEditingId(null)
     pushLog(`Edited “${text.slice(0, 28)}”`)
   }, [editingId, pushLog])
+
+  const handleAiQuery = useCallback(async (query: string, sourceId?: string) => {
+    const api = window.cutknot?.ai
+    if (!api) {
+      pushLog('AI non disponible (mode web)')
+      return
+    }
+
+    const sources = items.filter((it) => it.type === 'source' && it.cells && it.cells.length > 0)
+    if (sources.length === 0) {
+      pushLog('Aucune Source avec données')
+      return
+    }
+
+    const selected = sourceId ? sources.find((s) => s.id === sourceId) : undefined
+    const primary =
+      selected ??
+      (selectedIds.length === 1 ? sources.find((s) => s.id === selectedIds[0]) : undefined) ??
+      sources[0]!
+    const headers = primary.cells?.[0] ?? []
+
+    try {
+      pushLog(`Demande AI: ${query}`)
+      const response = await api.run({
+        userMessage: query,
+        availableColumns: headers,
+        context: `Source: ${primary.text}`,
+      })
+      setAiProposal({ response, availableColumns: headers, targetSourceId: primary.id })
+    } catch (error) {
+      pushLog(`Erreur AI: ${String(error)}`)
+    }
+  }, [items, pushLog, selectedIds])
+
+  const handleAiAccept = useCallback((action: AiAction) => {
+    if (!aiProposal) return
+    const target = items.find((it) => it.id === aiProposal.targetSourceId && it.type === 'source')
+    if (!target?.cells) {
+      pushLog('Source cible introuvable')
+      setAiProposal(null)
+      return
+    }
+
+    const beforeRows = Math.max(0, target.cells.length - 1)
+    const otherSources = items.filter(
+      (it) => it.type === 'source' && it.id !== target.id && it.cells && it.cells.length > 0,
+    )
+    const right = action.type === 'join' ? otherSources[0] : undefined
+    const result = executeAction(
+      {
+        cells: target.cells,
+        rightCells: right?.cells,
+        rightSourceName: right?.text,
+      },
+      action,
+    )
+
+    let nextItems = items.map((item) =>
+      item.id === target.id ? { ...item, cells: result.cells } : item,
+    )
+
+    if (result.kpi) {
+      const kpiItem = makeKpi(target.x + 220, target.y + 40, false)
+      kpiItem.text = result.kpi.title
+      kpiItem.measure = result.kpi.measure
+      kpiItem.kpiReady = true
+      kpiItem.kpiAgg = result.kpi.agg
+      kpiItem.kpiColumn = result.kpi.column
+      kpiItem.kpiNumerator = result.kpi.numerator
+      kpiItem.kpiDenominator = result.kpi.denominator
+      kpiItem.kpiSkippedWarning = result.kpi.skippedWarning
+      nextItems = [...nextItems, kpiItem]
+    }
+
+    applyItems(nextItems)
+    if (result.orphanLog) pushLog(result.orphanLog)
+    pushLog(
+      `${result.log} (avant: ${beforeRows} lignes, après: ${Math.max(0, result.cells.length - 1)} lignes)`,
+    )
+    setAiProposal(null)
+  }, [aiProposal, items, pushLog, applyItems])
+
+  const handleAiRefuse = useCallback(() => {
+    pushLog('Proposition AI refusée')
+    setAiProposal(null)
+  }, [pushLog])
+
+  const acceptSimulatedProposal = useCallback(
+    (sourceId: string, action: AiAction) => {
+      const target = itemsRef.current.find((it) => it.id === sourceId && it.type === 'source')
+      if (!target?.cells) throw new Error('target source missing')
+      setAiProposal({
+        response: { proposal: action, deterministic: true },
+        availableColumns: target.cells[0] ?? [],
+        targetSourceId: sourceId,
+      })
+      // Apply synchronously for harness after state is set via refs path below
+      const beforeRows = Math.max(0, target.cells.length - 1)
+      const otherSources = itemsRef.current.filter(
+        (it) => it.type === 'source' && it.id !== sourceId && it.cells && it.cells.length > 0,
+      )
+      const right = action.type === 'join' ? otherSources[0] : undefined
+      const result = executeAction(
+        { cells: target.cells, rightCells: right?.cells, rightSourceName: right?.text },
+        action,
+      )
+      let nextItems = itemsRef.current.map((item) =>
+        item.id === sourceId ? { ...item, cells: result.cells } : item,
+      )
+      if (result.kpi) {
+        const kpiItem = makeKpi(target.x + 220, target.y + 40, false)
+        kpiItem.text = result.kpi.title
+        kpiItem.measure = result.kpi.measure
+        kpiItem.kpiReady = true
+        kpiItem.kpiAgg = result.kpi.agg
+        kpiItem.kpiColumn = result.kpi.column
+        kpiItem.kpiNumerator = result.kpi.numerator
+        kpiItem.kpiDenominator = result.kpi.denominator
+        kpiItem.kpiSkippedWarning = result.kpi.skippedWarning
+        nextItems = [...nextItems, kpiItem]
+      }
+      applyItems(nextItems)
+      if (result.orphanLog) pushLog(result.orphanLog)
+      pushLog(
+        `${result.log} (avant: ${beforeRows} lignes, après: ${Math.max(0, result.cells.length - 1)} lignes)`,
+      )
+      setAiProposal(null)
+      return {
+        beforeRows,
+        afterRows: Math.max(0, result.cells.length - 1),
+        log: result.log,
+        measure: result.kpi?.measure,
+      }
+    },
+    [applyItems, pushLog],
+  )
 
   const applyZoomAt = useCallback((next: number, clientX?: number, clientY?: number) => {
     const canvas = canvasRef.current
@@ -892,11 +1048,16 @@ export default function Board() {
           }),
         )
       },
+      acceptSimulatedProposal: (sourceId, action) => acceptSimulatedProposal(sourceId, action),
+      refuseSimulatedProposal: () => {
+        pushLog('Proposition AI refusée')
+        setAiProposal(null)
+      },
     }
     return () => {
       delete window.__cutknotBoard
     }
-  }, [applyCsv, applyItems, applyConnectors])
+  }, [applyCsv, applyItems, applyConnectors, acceptSimulatedProposal, pushLog])
 
   const primaryItem = selectedIds.length === 1 ? items.find((i) => i.id === selectedIds[0]) : undefined
   const primaryConn = selectedIds.length === 1 ? connectors.find((c) => c.id === selectedIds[0]) : undefined
@@ -1277,14 +1438,25 @@ export default function Board() {
       }
       wid={<WhatIveDone scope={scopeLabel} day="Lun 13" items={widItems} />}
       footer={
-        <Footer
-          placeholder="Propose une analyse…"
-          action={
-            <Link className="btn primary" to="/kpi">
-              Vers KPI
-            </Link>
-          }
-        />
+        <>
+          <Footer
+            placeholder="Propose une analyse…"
+            onSubmit={handleAiQuery}
+            action={
+              <Link className="btn primary" to="/kpi">
+                Vers KPI
+              </Link>
+            }
+          />
+          {aiProposal && (
+            <AiProposal
+              response={aiProposal.response}
+              availableColumns={aiProposal.availableColumns}
+              onAccept={handleAiAccept}
+              onRefuse={handleAiRefuse}
+            />
+          )}
+        </>
       }
     />
   )

@@ -10,6 +10,7 @@ import {
   decodeCsvBytes,
   formatMeasure,
   joinAggregateLog,
+  joinOrphanLog,
   leftJoin,
   parseCsv,
   parseNumber,
@@ -92,15 +93,17 @@ describe('numbers and KPI', () => {
     assert.equal(join1.cells.length, 6)
     assert.equal(trn005a?.[7], '')
     assert.equal(trn005b?.[7], '99.8')
+    assert.equal(join1.orphanRightRows, 0)
+    assert.equal(join2.orphanRightRows, 0)
 
     const sum1 = computeKpi(join1.cells, { agg: 'sum', column: 'Montant' })
     const sum2 = computeKpi(join2.cells, { agg: 'sum', column: 'Montant' })
     const ratio1 = computeKpi(join1.cells, { agg: 'ratio', numerator: 'Montant', denominator: 'Km' })
     const ratio2 = computeKpi(join2.cells, { agg: 'ratio', numerator: 'Montant', denominator: 'Km' })
-    assert.equal(formatMeasure(sum1, 'sum'), '765,1')
-    assert.equal(formatMeasure(sum2, 'sum'), '899,6')
-    assert.equal(formatMeasure(ratio1, 'ratio'), '1,26')
-    assert.equal(formatMeasure(ratio2, 'ratio'), '1,30')
+    assert.equal(formatMeasure(sum1.value, 'sum'), '765,1')
+    assert.equal(formatMeasure(sum2.value, 'sum'), '899,6')
+    assert.equal(formatMeasure(ratio1.value, 'ratio'), '1,26')
+    assert.equal(formatMeasure(ratio2.value, 'ratio'), '1,30')
   })
 
   it('does not hardcode Montant / Km for the ratio', () => {
@@ -109,8 +112,48 @@ describe('numbers and KPI', () => {
       ['10', '2'],
       ['20', '8'],
     ]
-    const value = computeKpi(cells, { agg: 'ratio', numerator: 'A', denominator: 'B' })
-    assert.equal(value, 3)
+    const result = computeKpi(cells, { agg: 'ratio', numerator: 'A', denominator: 'B' })
+    assert.equal(result.value, 3)
+    assert.equal(result.skippedCells, 0)
+  })
+
+  it('counts skipped non-numeric values', () => {
+    const cells = [
+      ['Value', 'Name'],
+      ['10', 'A'],
+      ['N/A', 'B'],
+      ['20', 'C'],
+      ['ERROR', 'D'],
+    ]
+    const sum = computeKpi(cells, { agg: 'sum', column: 'Value' })
+    assert.equal(sum.value, 30)
+    assert.equal(sum.skippedCells, 2)
+  })
+
+  it('attributes skipped cells to correct column in ratio (bad Km)', () => {
+    const cells = [
+      ['Montant', 'Km'],
+      ['100', '10'],
+      ['200', 'N/A'],
+      ['300', '30'],
+    ]
+    const result = computeKpi(cells, { agg: 'ratio', numerator: 'Montant', denominator: 'Km' })
+    assert.equal(result.value, 15)
+    assert.equal(result.skippedCells, 1)
+    assert.deepEqual(result.skippedByColumn, { Km: 1 })
+  })
+
+  it('attributes skipped cells to both columns when both have bad data', () => {
+    const cells = [
+      ['Montant', 'Km'],
+      ['100', '10'],
+      ['BAD', '20'],
+      ['300', 'ERROR'],
+    ]
+    const result = computeKpi(cells, { agg: 'ratio', numerator: 'Montant', denominator: 'Km' })
+    assert.equal(result.value, 40)
+    assert.equal(result.skippedCells, 2)
+    assert.deepEqual(result.skippedByColumn, { Montant: 1, Km: 1 })
   })
 })
 
@@ -142,6 +185,7 @@ describe('join key', () => {
     )
     assert.equal(joined.cells[1]?.[2], '')
     assert.equal(joined.aggregatedRightRows, 0)
+    assert.equal(joined.orphanRightRows, 1)
   })
 
   it('does not join key values that differ only by case', () => {
@@ -153,7 +197,7 @@ describe('join key', () => {
     assert.equal(trn001?.[7], '')
     assert.equal(trn002?.[7], '112,0 €')
     const sum = computeKpi(joined.cells, { agg: 'sum', column: 'Montant' })
-    assert.equal(formatMeasure(sum, 'sum'), '578,7')
+    assert.equal(formatMeasure(sum.value, 'sum'), '578,7')
   })
 
   it('aggregates right-side duplicate keys and keeps every left row', () => {
@@ -169,8 +213,8 @@ describe('join key', () => {
 
     const sum = computeKpi(joined.cells, { agg: 'sum', column: 'Montant' })
     const ratio = computeKpi(joined.cells, { agg: 'ratio', numerator: 'Montant', denominator: 'Km' })
-    assert.equal(formatMeasure(sum, 'sum'), '815,1')
-    assert.equal(formatMeasure(ratio, 'ratio'), '1,35')
+    assert.equal(formatMeasure(sum.value, 'sum'), '815,1')
+    assert.equal(formatMeasure(ratio.value, 'ratio'), '1,35')
     assert.equal(joinAggregateLog('couts-dupes.csv', joined.aggregatedRightRows), 'Join with couts-dupes.csv: 2 doublons agrégés')
 
     const leftDupes = [
@@ -184,6 +228,62 @@ describe('join key', () => {
     assert.equal(bothLeft.cells[2]?.[1], '10')
     assert.equal(bothLeft.cells[1]?.[bothLeft.cells[1].length - 1], '162')
     assert.equal(bothLeft.cells[2]?.[bothLeft.cells[2].length - 1], '162')
+  })
+
+  it('counts orphan right rows (TRN099)', () => {
+    const tournees = load('tournees.csv')
+    const orphan = load('couts-orphan.csv')
+    const joined = leftJoin(tournees, orphan)
+    assert.equal(joined.cells.length, 6)
+    assert.equal(joined.orphanRightRows, 1)
+    assert.equal(joined.key?.leftKey, 'ID_tournée')
+    const trn005 = joined.cells.find((row) => row[0] === 'TRN005')
+    assert.equal(trn005?.[trn005.length - 1], '')
+  })
+
+  it('never joins blank keys', () => {
+    const left = [
+      ['ID', 'Name'],
+      ['', 'Alice'],
+      ['B', 'Bob'],
+    ]
+    const right = [
+      ['ID', 'Age'],
+      ['', '30'],
+      ['B', '25'],
+    ]
+    const joined = leftJoin(left, right)
+    assert.equal(joined.cells.length, 3)
+    assert.equal(joined.cells[1]?.[2], '')
+    assert.equal(joined.cells[2]?.[2], '25')
+    assert.equal(joined.orphanRightRows, 1)
+  })
+
+  it('counts repeated orphan keys against original rows (TRN099 x3)', () => {
+    const tournees = load('tournees.csv')
+    const orphanX3 = load('couts-orphan-x3.csv')
+    const joined = leftJoin(tournees, orphanX3)
+    assert.equal(joined.cells.length, 6)
+    assert.equal(joined.orphanRightRows, 3)
+    const log = joinOrphanLog('couts-orphan-x3.csv', joined.orphanRightRows)
+    assert.equal(log, 'Join with couts-orphan-x3.csv: 3 lignes sans correspondance')
+  })
+
+  it('counts blank keys as orphans when left has no blanks', () => {
+    const left = [
+      ['ID', 'Name'],
+      ['A', 'Alice'],
+      ['B', 'Bob'],
+    ]
+    const right = [
+      ['ID', 'Age'],
+      ['', '30'],
+      ['', '25'],
+      ['C', '40'],
+    ]
+    const joined = leftJoin(left, right)
+    assert.equal(joined.cells.length, 3)
+    assert.equal(joined.orphanRightRows, 3)
   })
 })
 

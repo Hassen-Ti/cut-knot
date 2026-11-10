@@ -6,6 +6,7 @@ export {
   findJoinKey,
   joinAggregateLog,
   joinKeyValue,
+  joinOrphanLog,
   leftJoin,
   normalizeHeader,
   type JoinKey,
@@ -18,7 +19,9 @@ export {
   isKpiAgg,
   KPI_AGG_LABELS,
   KPI_AGGS,
+  kpiSkippedWarning,
   measureFromGolden,
   type KpiAgg,
+  type KpiResult,
   type KpiSpec,
 } from './kpi.ts'

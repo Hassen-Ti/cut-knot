@@ -1076,3 +1076,126 @@ table.sheet thead tr.filter-row th.corner {
   cursor: grab;
   pointer-events: all;
 }
+
+/* AI Proposal Overlay */
+.ai-proposal-overlay {
+  position: fixed;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.5);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 1000;
+  padding: 24px;
+}
+
+.ai-proposal-card {
+  background: #fff;
+  border-radius: 12px;
+  box-shadow: 0 20px 40px rgba(0, 0, 0, 0.2);
+  max-width: 600px;
+  width: 100%;
+  max-height: 80vh;
+  display: flex;
+  flex-direction: column;
+}
+
+.ai-proposal-header {
+  padding: 20px 24px;
+  border-bottom: 1px solid var(--border);
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.ai-proposal-header h3 {
+  margin: 0;
+  font-size: 18px;
+  font-weight: 600;
+  color: var(--text);
+}
+
+.ai-badge {
+  font-size: 11px;
+  font-weight: 600;
+  padding: 4px 8px;
+  background: #fef3c7;
+  color: #92400e;
+  border-radius: 6px;
+}
+
+.ai-proposal-body {
+  padding: 24px;
+  overflow-y: auto;
+  flex: 1;
+}
+
+.ai-proposal-action {
+  margin-bottom: 12px;
+  font-size: 14px;
+  color: var(--text);
+}
+
+.ai-proposal-json {
+  background: var(--gray);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 16px;
+  font-family: 'SF Mono', Monaco, 'Cascadia Code', monospace;
+  font-size: 13px;
+  line-height: 1.5;
+  overflow-x: auto;
+  color: var(--text);
+}
+
+.ai-proposal-error {
+  margin-top: 16px;
+  padding: 12px;
+  background: #fee2e2;
+  border: 1px solid #f87171;
+  border-radius: 6px;
+  color: #991b1b;
+  font-size: 13px;
+}
+
+.ai-proposal-footer {
+  padding: 16px 24px;
+  border-top: 1px solid var(--border);
+  display: flex;
+  gap: 12px;
+  justify-content: flex-end;
+}
+
+.btn {
+  padding: 8px 16px;
+  border-radius: 8px;
+  font-size: 14px;
+  font-weight: 600;
+  font-family: var(--font);
+  cursor: pointer;
+  border: none;
+  transition: all 0.15s;
+}
+
+.btn:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.btn-secondary {
+  background: var(--gray);
+  color: var(--text);
+}
+
+.btn-secondary:hover:not(:disabled) {
+  background: #d4d4d8;
+}
+
+.btn-primary {
+  background: var(--accent);
+  color: #fff;
+}
+
+.btn-primary:hover:not(:disabled) {
+  background: #2563eb;
+}
